@@ -11,6 +11,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { useAdminAuth } from '../contexts/AdminAuthContext';
 import { logger, LogCategory } from '../utils/logger';
+import { useNavigate } from 'react-router-dom';
 
 const LoginContainer = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -25,6 +26,7 @@ const LoginContainer = styled(Paper)(({ theme }) => ({
 
 const AdminLogin: React.FC = () => {
   const { login } = useAdminAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -37,7 +39,10 @@ const AdminLogin: React.FC = () => {
 
     try {
       const success = await login(username, password);
-      if (!success) {
+      if (success) {
+        logger.info(LogCategory.AUTH, 'Login successful, navigating to admin panel', null, 'AdminLogin');
+        navigate('/admin');
+      } else {
         setError('Invalid credentials');
         logger.warn(LogCategory.AUTH, 'Admin login attempt failed', null, 'AdminLogin');
       }

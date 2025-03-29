@@ -198,28 +198,47 @@ The application includes a secure admin interface for debugging and system monit
 
 1. **Access**
    - URL: `/admin/login`
-   - Default credentials:
-     - Username: `admin`
-     - Password: `admin`
-   - Note: Change these credentials in production
+   - Default credentials: admin/admin (change in production)
 
 2. **Features**
-   - Performance monitoring
-   - System statistics
-   - Debug settings
-   - Storage management
-   - Security settings
+   - **Performance Monitoring**
+     - Real-time system statistics
+     - Agent status monitoring
+     - Resource usage tracking
+     - Performance graphs and analytics
+     - Alert threshold configuration
 
-3. **Debugging Tools**
-   - Real-time system stats
-   - Log level control
-   - Verbose logging toggle
-   - Mock data simulation
-   - Slow response simulation
+   - **Debugging Tools**
+     - Log level controls
+     - Log filtering and search
+     - Log export functionality
+     - System diagnostics
+     - Debug mode toggle
 
-4. **Security**
-   - Protected routes
-   - Token-based authentication
+   - **Storage Management**
+     - File storage monitoring
+     - Storage cleanup tools
+     - Storage analytics
+     - Quota management
+     - Backup controls
+
+   - **Security Settings**
+     - User management
+     - Role-based access control
+     - Access logs
+     - Security audit tools
+     - API key management
+
+3. **Security**
+   - JWT-based authentication
+   - Role-based access control
+   - Secure password hashing
    - Session management
-   - Access logging
-   - Secure credential handling
+   - Audit logging
+
+4. **Usage**
+   - Monitor system health
+   - Debug issues
+   - Manage storage
+   - Configure security
+   - View system logs

@@ -8,15 +8,12 @@ export enum LogLevel {
 
 // Log categories
 export enum LogCategory {
-  AUTH = 'Authentication',
-  API = 'API Calls',
-  UI = 'User Interface',
-  STATE = 'State Management',
-  FILE = 'File Operations',
-  AGENT = 'Agent Status',
-  VALIDATION = 'Validation',
-  PERFORMANCE = 'Performance',
-  ERROR = 'Error Tracking'
+  AUTH = 'AUTH',
+  ERROR = 'ERROR',
+  API = 'API',
+  UI = 'UI',
+  SYSTEM = 'SYSTEM',
+  PERFORMANCE = 'PERFORMANCE'
 }
 
 // Format date without date-fns
@@ -25,22 +22,24 @@ const formatDate = (date: Date): string => {
 };
 
 // Log message interface
-interface LogMessage {
+interface LogEntry {
   timestamp: string;
-  level: LogLevel;
   category: LogCategory;
+  level: LogLevel;
   message: string;
   data?: any;
-  component?: string;
+  source?: string;
 }
 
 // Logger class
 export class Logger {
   private static instance: Logger;
-  private logs: LogMessage[] = [];
-  private maxLogs: number = 1000;
+  private logs: LogEntry[] = [];
+  private isDevelopment: boolean;
 
-  private constructor() {}
+  private constructor() {
+    this.isDevelopment = process.env.NODE_ENV === 'development';
+  }
 
   static getInstance(): Logger {
     if (!Logger.instance) {
@@ -49,55 +48,60 @@ export class Logger {
     return Logger.instance;
   }
 
-  private addLog(level: LogLevel, category: LogCategory, message: string, data?: any, component?: string) {
-    const log: LogMessage = {
-      timestamp: formatDate(new Date()),
-      level,
+  private log(level: LogLevel, category: LogCategory, message: string, data?: any, source?: string) {
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
       category,
+      level,
       message,
       data,
-      component
+      source
     };
 
-    this.logs.push(log);
-    if (this.logs.length > this.maxLogs) {
-      this.logs.shift();
+    this.logs.push(entry);
+
+    if (this.isDevelopment) {
+      const consoleMessage = `[${entry.timestamp}] ${entry.level} [${entry.category}] ${entry.source ? `[${entry.source}] ` : ''}${message}`;
+
+      switch (level) {
+        case LogLevel.DEBUG:
+          console.debug(consoleMessage, data || '');
+          break;
+        case LogLevel.INFO:
+          console.info(consoleMessage, data || '');
+          break;
+        case LogLevel.WARN:
+          console.warn(consoleMessage, data || '');
+          break;
+        case LogLevel.ERROR:
+          console.error(consoleMessage, data || '');
+          break;
+      }
     }
   }
 
-  debug(category: LogCategory, message: string, data?: any, component?: string) {
-    this.addLog(LogLevel.DEBUG, category, message, data, component);
-    console.debug(`[${LogLevel.DEBUG}] [${category}] ${component ? `[${component}] ` : ''}${message}`, data || '');
+  debug(category: LogCategory, message: string, data?: any, source?: string) {
+    this.log(LogLevel.DEBUG, category, message, data, source);
   }
 
-  info(category: LogCategory, message: string, data?: any, component?: string) {
-    this.addLog(LogLevel.INFO, category, message, data, component);
-    console.info(`[${LogLevel.INFO}] [${category}] ${component ? `[${component}] ` : ''}${message}`, data || '');
+  info(category: LogCategory, message: string, data?: any, source?: string) {
+    this.log(LogLevel.INFO, category, message, data, source);
   }
 
-  warn(category: LogCategory, message: string, data?: any, component?: string) {
-    this.addLog(LogLevel.WARN, category, message, data, component);
-    console.warn(`[${LogLevel.WARN}] [${category}] ${component ? `[${component}] ` : ''}${message}`, data || '');
+  warn(category: LogCategory, message: string, data?: any, source?: string) {
+    this.log(LogLevel.WARN, category, message, data, source);
   }
 
-  error(category: LogCategory, message: string, data?: any, component?: string) {
-    this.addLog(LogLevel.ERROR, category, message, data, component);
-    console.error(`[${LogLevel.ERROR}] [${category}] ${component ? `[${component}] ` : ''}${message}`, data || '');
+  error(category: LogCategory, message: string, data?: any, source?: string) {
+    this.log(LogLevel.ERROR, category, message, data, source);
   }
 
-  getLogs(): LogMessage[] {
+  getLogs(): LogEntry[] {
     return [...this.logs];
   }
 
   clearLogs() {
     this.logs = [];
-  }
-
-  setMaxLogs(max: number) {
-    this.maxLogs = max;
-    while (this.logs.length > this.maxLogs) {
-      this.logs.shift();
-    }
   }
 }
 

@@ -6,6 +6,17 @@ from pathlib import Path
 from typing import List, Optional
 
 import jwt
+from app.api.v1.api import api_router
+from app.core.config import settings
+from app.core.file_storage import FileStorage
+from app.core.rate_limit import RateLimiter
+from app.core.security import (create_access_token, get_password_hash,
+                               verify_password, verify_token)
+from app.schemas.api_schemas import (APIKey, APIKeyCreate, ErrorResponse,
+                                     FileInfo, FileUpload, PaginatedResponse,
+                                     PaginationParams, RateLimit,
+                                     RateLimitInfo, SuccessResponse, Token,
+                                     TokenData, User, UserCreate, UserUpdate)
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -13,26 +24,16 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 
-from ..core.config import settings
-from ..core.file_storage import FileStorage
-from ..core.rate_limit import RateLimiter
-from ..core.security import (create_access_token, get_password_hash,
-                             verify_password, verify_token)
-from ..schemas.api_schemas import (APIKey, APIKeyCreate, ErrorResponse,
-                                   FileInfo, FileUpload, PaginatedResponse,
-                                   PaginationParams, RateLimit, RateLimitInfo,
-                                   SuccessResponse, Token, TokenData, User,
-                                   UserCreate, UserUpdate)
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="AI-Powered Educational Content Generator API",
+    title=settings.PROJECT_NAME,
     description="API for generating interactive educational content from documents",
     version="1.0.0",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 
 # Initialize rate limiter
@@ -54,7 +55,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,6 +63,9 @@ app.add_middleware(
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
+
+# Include API router
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 # Custom OpenAPI schema
@@ -265,3 +269,8 @@ async def health_check():
         message="Service is healthy",
         data={"timestamp": datetime.utcnow().isoformat(), "version": app.version},
     )
+
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the Module Creator API"}

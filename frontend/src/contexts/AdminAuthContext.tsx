@@ -7,6 +7,7 @@ interface AdminAuthContextType {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   checkAdminStatus: () => Promise<boolean>;
+  error: string | null;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
@@ -22,67 +23,95 @@ export const useAdminAuth = () => {
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const checkAdminStatus = async (): Promise<boolean> => {
     try {
-      // TODO: Implement actual API call to check admin status
+      setError(null);
       const token = localStorage.getItem('adminToken');
       if (!token) {
         setIsAdmin(false);
         setIsAuthenticated(false);
+        logger.debug(LogCategory.AUTH, 'No token found in localStorage', null, 'AdminAuth');
         return false;
       }
 
-      // Mock API call
-      const response = await fetch('/api/admin/status', {
+      logger.debug(LogCategory.AUTH, 'Checking admin status with token', null, 'AdminAuth');
+      const response = await fetch('http://localhost:8000/api/v1/auth/verify', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
 
       if (response.ok) {
+        const data = await response.json();
         setIsAdmin(true);
         setIsAuthenticated(true);
-        logger.info(LogCategory.AUTH, 'Admin status verified', null, 'AdminAuth');
+        logger.info(LogCategory.AUTH, `Admin status verified for user: ${data.username}`, null, 'AdminAuth');
         return true;
       } else {
+        const errorData = await response.json();
         setIsAdmin(false);
         setIsAuthenticated(false);
-        logger.warn(LogCategory.AUTH, 'Admin status check failed', null, 'AdminAuth');
+        setError(errorData.detail || 'Failed to verify admin status');
+        logger.warn(LogCategory.AUTH, `Admin status check failed: ${errorData.detail}`, null, 'AdminAuth');
         return false;
       }
     } catch (error) {
-      logger.error(LogCategory.ERROR, 'Failed to check admin status', error, 'AdminAuth');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(errorMessage);
+      logger.error(LogCategory.ERROR, `Failed to check admin status: ${errorMessage}`, error, 'AdminAuth');
       return false;
     }
   };
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // TODO: Implement actual API call
-      // For development, use hardcoded credentials
-      if (username === 'admin' && password === 'admin') {
-        const mockToken = 'mock-admin-token';
-        localStorage.setItem('adminToken', mockToken);
+      setError(null);
+      logger.debug(LogCategory.AUTH, `Attempting login for user: ${username}`, null, 'AdminAuth');
+
+      const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          username: username,
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('adminToken', data.access_token);
         setIsAdmin(true);
         setIsAuthenticated(true);
-        logger.info(LogCategory.AUTH, 'Admin login successful', null, 'AdminAuth');
+        logger.info(LogCategory.AUTH, `Login successful for user: ${username}`, null, 'AdminAuth');
         return true;
+      } else {
+        setError(data.detail || 'Login failed');
+        logger.warn(LogCategory.AUTH, `Login failed: ${data.detail}`, null, 'AdminAuth');
+        return false;
       }
-
-      logger.warn(LogCategory.AUTH, 'Admin login failed: Invalid credentials', null, 'AdminAuth');
-      return false;
     } catch (error) {
-      logger.error(LogCategory.ERROR, 'Admin login failed', error, 'AdminAuth');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(errorMessage);
+      logger.error(LogCategory.ERROR, `Login failed: ${errorMessage}`, error, 'AdminAuth');
       return false;
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('adminToken');
-    setIsAdmin(false);
-    setIsAuthenticated(false);
-    logger.info(LogCategory.AUTH, 'Admin logged out', null, 'AdminAuth');
+    try {
+      localStorage.removeItem('adminToken');
+      setIsAdmin(false);
+      setIsAuthenticated(false);
+      setError(null);
+      logger.info(LogCategory.AUTH, 'Admin logged out successfully', null, 'AdminAuth');
+    } catch (error) {
+      logger.error(LogCategory.ERROR, 'Error during logout', error, 'AdminAuth');
+    }
   };
 
   useEffect(() => {
@@ -97,6 +126,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         login,
         logout,
         checkAdminStatus,
+        error,
       }}
     >
       {children}
