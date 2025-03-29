@@ -185,7 +185,7 @@ The system is designed to be easily customizable through prompt engineering:
 5. Create Pull Request
 
 ## License
-[Specify License]
+MIT License
 
 ## Acknowledgments
 - OpenAI for AI model services
