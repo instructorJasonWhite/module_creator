@@ -37,7 +37,7 @@ import { api, config } from '../config';
 import { logger, LogCategory } from '../utils/logger';
 import { fetchAgents } from '../services/system';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 // Styled components
 const UploadArea = styled(Paper)(({ theme }) => ({
@@ -299,11 +299,20 @@ const GenerationPage: React.FC = () => {
         hasContext: !!documentAnalyzerContext
       }, 'GenerationPage');
 
-      const response = await api.post(config.api.endpoints.agents.analyze, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+      const response = await axios.post(
+        `${config.api.baseUrl}${config.api.endpoints.agents.analyze}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            const progress = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
+            setUploadProgress(progress);
+            logger.debug(LogCategory.UPLOAD, `Upload progress: ${Math.round(progress)}%`, null, 'GenerationPage');
+          },
         }
-      });
+      );
 
       if (response.data.status === 'success') {
         logger.info(LogCategory.API, 'Document analysis completed successfully', response.data, 'GenerationPage');
@@ -347,8 +356,8 @@ const GenerationPage: React.FC = () => {
 
   const handleDeployAgent = async () => {
     try {
-      if (!currentFile) {
-        toast.error("Please upload a document first");
+      if (!processingResult?.text) {
+        toast.error("Please upload and process a document first");
         return;
       }
 
@@ -356,18 +365,26 @@ const GenerationPage: React.FC = () => {
       setAnalysisError(null);
 
       const formData = new FormData();
-      formData.append("document_text", currentFile.text);
-      formData.append("document_type", "educational");
-      formData.append("original_filename", currentFile.name);
+      formData.append("document_text", processingResult.text);
+      formData.append("document_type", processingResult.format || "educational");
+      formData.append("original_filename", currentFile?.name || "");
 
-      const response = await api.post("/api/v1/agents/analyze_document", formData);
-      setProcessingResult(response.data);
+      const response = await api.post("/api/v1/agents/analyze", formData);
+      setProcessingResult(prev => prev ? {
+        ...prev,
+        analysis: response.data.analysis
+      } : null);
 
       if (response.data.outline_file) {
-        const outlineResponse = await api.get(
-          `/api/v1/documents/outline/${encodeURIComponent(response.data.outline_file)}`
-        );
-        setOutlineContent(outlineResponse.data);
+        try {
+          const outlineResponse = await api.get(
+            `/api/v1/documents/outline/${encodeURIComponent(response.data.outline_file)}`
+          );
+          setOutlineContent(outlineResponse.data);
+        } catch (error) {
+          console.error("Error fetching outline:", error);
+          toast.error("Failed to fetch outline content");
+        }
       }
 
       toast.success("Document analysis completed successfully");
@@ -494,7 +511,7 @@ const GenerationPage: React.FC = () => {
                     Format
                   </Typography>
                   <Typography variant="body1">
-                    {processingResult.format.toUpperCase()}
+                    {processingResult?.format?.toUpperCase() || 'Unknown'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -502,7 +519,7 @@ const GenerationPage: React.FC = () => {
                     Pages
                   </Typography>
                   <Typography variant="body1">
-                    {processingResult.processing_info.pages}
+                    {processingResult?.processing_info?.pages || 'Unknown'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
@@ -510,17 +527,17 @@ const GenerationPage: React.FC = () => {
                     Characters
                   </Typography>
                   <Typography variant="body1">
-                    {processingResult.text.length.toLocaleString()}
+                    {processingResult?.text?.length?.toLocaleString() || '0'}
                   </Typography>
                 </Grid>
-                {processingResult.processing_info.is_scanned && (
+                {processingResult?.processing_info?.is_scanned && (
                   <Grid item xs={12}>
                     <Alert severity="warning" sx={{ mt: 1 }}>
                       This appears to be a scanned document
                     </Alert>
                   </Grid>
                 )}
-                {processingResult.processing_info.ocr_used && (
+                {processingResult?.processing_info?.ocr_used && (
                   <Grid item xs={12}>
                     <Alert severity="info" sx={{ mt: 1 }}>
                       OCR was used to extract text
