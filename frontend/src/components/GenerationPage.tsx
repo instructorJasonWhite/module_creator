@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Tabs,
@@ -19,14 +19,25 @@ import {
   Grid,
   IconButton,
   Tooltip,
+  Card,
+  CardContent,
+  Divider,
+  Collapse,
+  IconButton as MuiIconButton,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import SettingsIcon from '@mui/icons-material/Settings';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { config } from '../config';
+import { api, config } from '../config';
 import { logger, LogCategory } from '../utils/logger';
+import { fetchAgents } from '../services/system';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { toast } from 'react-hot-toast';
 
 // Styled components
 const UploadArea = styled(Paper)(({ theme }) => ({
@@ -57,9 +68,34 @@ const TabPanel = (props: any) => {
 
 interface ProcessingResult {
   text: string;
-  metadata: any;
   format: string;
-  processing_info: any;
+  metadata?: any;
+  processing_info?: any;
+  analysis?: {
+    topics: string[];
+    subtopics: Record<string, string[]>;
+    key_concepts: string[];
+    complexity: string;
+    suggested_structure: string;
+    prerequisites?: string[];
+    dependencies?: string[];
+  };
+}
+
+interface AnalysisResult {
+  topics: string[];
+  subtopics: { [key: string]: string[] };
+  key_concepts: string[];
+  complexity: string;
+  suggested_structure: string;
+  prerequisites: string[];
+  dependencies: string[];
+}
+
+interface AnalysisResponse {
+  status: string;
+  analysis: AnalysisResult;
+  outline_file: string;
 }
 
 const MAX_FILE_SIZE = config.upload.maxFileSize;
@@ -87,9 +123,34 @@ const GenerationPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [documentAnalyzerContext, setDocumentAnalyzerContext] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const [outlineContent, setOutlineContent] = useState<string>("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+
+  // Fetch document analyzer context on component mount
+  useEffect(() => {
+    const fetchDocumentAnalyzerContext = async () => {
+      try {
+        const agents = await fetchAgents();
+        const documentAnalyzer = agents.find(agent => agent.name === 'Document Analyzer');
+        if (documentAnalyzer?.contexts?.[0]?.context) {
+          setDocumentAnalyzerContext(documentAnalyzer.contexts[0].context);
+          logger.debug(LogCategory.API, 'Fetched document analyzer context', documentAnalyzer.contexts[0].context, 'GenerationPage');
+        }
+      } catch (error) {
+        logger.error(LogCategory.ERROR, 'Failed to fetch document analyzer context', error, 'GenerationPage');
+      }
+    };
+
+    fetchDocumentAnalyzerContext();
+  }, []);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setCurrentStep(newValue);
@@ -126,16 +187,24 @@ const GenerationPage: React.FC = () => {
   };
 
   const uploadFile = async (file: File) => {
-    logger.debug(LogCategory.UPLOAD, `Starting file upload: ${file.name}`, null, 'GenerationPage');
-    setIsUploading(true);
-    setUploadError(null);
-    setUploadSuccess(false);
-    setProcessingResult(null);
-    setUploadProgress(0);
-
     try {
+      setCurrentFile(file);
+      setProcessingResult(null);
+      setUploadProgress(0);
+      setUploadError(null);
+      setUploadSuccess(false);
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
+      formData.append("original_filename", file.name);
+
+      console.log("Uploading file:", file.name);
+
+      // Add agent context if available
+      if (documentAnalyzerContext) {
+        formData.append('agent_context', documentAnalyzerContext);
+        logger.debug(LogCategory.UPLOAD, 'Including agent context in upload', documentAnalyzerContext, 'GenerationPage');
+      }
 
       logger.debug(LogCategory.UPLOAD, `Sending request to ${config.api.baseUrl}${config.api.endpoints.documents.upload}`, null, 'GenerationPage');
 
@@ -151,7 +220,13 @@ const GenerationPage: React.FC = () => {
       });
 
       logger.debug(LogCategory.UPLOAD, 'File uploaded successfully', response.data, 'GenerationPage');
-      setProcessingResult(response.data.data);
+      setProcessingResult({
+        ...response.data.data,
+        processing_info: {
+          ...response.data.data.processing_info,
+          original_filename: file.name
+        }
+      });
       setUploadSuccess(true);
 
       // Move to the next step after successful upload
@@ -187,6 +262,121 @@ const GenerationPage: React.FC = () => {
   const handleAdminClick = () => {
     logger.info(LogCategory.UI, 'Navigating to admin panel', null, 'GenerationPage');
     navigate('/admin');
+  };
+
+  const handleTopicClick = (topic: string) => {
+    setExpandedTopics(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(topic)) {
+        newSet.delete(topic);
+      } else {
+        newSet.add(topic);
+      }
+      return newSet;
+    });
+  };
+
+  const handleRegenerateAnalysis = async () => {
+    if (!processingResult?.text || !processingResult?.format) {
+      setAnalysisError('No document text or format available');
+      return;
+    }
+
+    try {
+      setIsAnalyzing(true);
+      setAnalysisError(null);
+
+      const formData = new FormData();
+      formData.append('document_text', processingResult.text);
+      formData.append('document_type', processingResult.format);
+      if (documentAnalyzerContext) {
+        formData.append('agent_context', documentAnalyzerContext);
+      }
+
+      logger.debug(LogCategory.API, 'Sending document analysis request', {
+        documentType: processingResult.format,
+        textLength: processingResult.text.length,
+        hasContext: !!documentAnalyzerContext
+      }, 'GenerationPage');
+
+      const response = await api.post(config.api.endpoints.agents.analyze, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data.status === 'success') {
+        logger.info(LogCategory.API, 'Document analysis completed successfully', response.data, 'GenerationPage');
+        setProcessingResult(prev => prev ? {
+          ...prev,
+          analysis: response.data.analysis
+        } : null);
+      } else {
+        const errorMsg = response.data.error || 'Failed to analyze document';
+        logger.error(LogCategory.ERROR, 'Document analysis failed', {
+          error: errorMsg,
+          response: response.data
+        }, 'GenerationPage');
+        setAnalysisError(`Analysis failed: ${errorMsg}`);
+      }
+    } catch (error) {
+      const errorDetails = error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        response: (error as any).response?.data
+      } : 'Unknown error';
+
+      logger.error(LogCategory.ERROR, 'Error analyzing document', errorDetails, 'GenerationPage');
+
+      let errorMessage = 'Failed to analyze document';
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          errorMessage = `Server error: ${error.response.data.detail || error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'No response received from server. Please check your connection.';
+        } else {
+          errorMessage = `Request error: ${error.message}`;
+        }
+      }
+
+      setAnalysisError(errorMessage);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleDeployAgent = async () => {
+    try {
+      if (!currentFile) {
+        toast.error("Please upload a document first");
+        return;
+      }
+
+      setIsAnalyzing(true);
+      setAnalysisError(null);
+
+      const formData = new FormData();
+      formData.append("document_text", currentFile.text);
+      formData.append("document_type", "educational");
+      formData.append("original_filename", currentFile.name);
+
+      const response = await api.post("/api/v1/agents/analyze_document", formData);
+      setProcessingResult(response.data);
+
+      if (response.data.outline_file) {
+        const outlineResponse = await api.get(
+          `/api/v1/documents/outline/${encodeURIComponent(response.data.outline_file)}`
+        );
+        setOutlineContent(outlineResponse.data);
+      }
+
+      toast.success("Document analysis completed successfully");
+    } catch (error) {
+      console.error("Error deploying agent:", error);
+      toast.error("Failed to analyze document");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -340,50 +530,187 @@ const GenerationPage: React.FC = () => {
               </Grid>
             </Paper>
 
-            <Paper sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">
-                  Document Content
+            {/* Document Preview */}
+            {processingResult?.text && (
+              <Paper sx={{ p: 2, mb: 2, maxHeight: '300px', overflow: 'auto' }}>
+                <Typography variant="h6" gutterBottom>
+                  Document Preview
                 </Typography>
-              </Box>
-              <Paper
-                variant="outlined"
-                sx={{
-                  p: 2,
-                  height: '500px',
-                  overflow: 'auto',
-                  backgroundColor: 'grey.50',
-                  fontFamily: 'monospace',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.5,
-                  '&::-webkit-scrollbar': {
-                    width: '8px',
-                  },
-                  '&::-webkit-scrollbar-track': {
-                    background: 'grey.200',
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    background: 'grey.400',
-                    borderRadius: '4px',
-                  },
-                  '&::-webkit-scrollbar-thumb:hover': {
-                    background: 'grey.500',
-                  },
-                }}
-              >
-                <Typography
-                  component="pre"
-                  sx={{
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    margin: 0,
-                    padding: 0,
-                  }}
-                >
-                  {processingResult.text}
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  {processingResult.text.substring(0, 1000)}...
                 </Typography>
               </Paper>
-            </Paper>
+            )}
+
+            {/* Deploy Agent Button */}
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', mb: 3 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleDeployAgent}
+                disabled={isAnalyzing}
+                startIcon={isAnalyzing ? <CircularProgress size={20} /> : <PlayArrowIcon />}
+              >
+                {isAnalyzing ? 'Analyzing...' : 'Deploy Document Analyzer Agent'}
+              </Button>
+            </Box>
+
+            {analysisError && (
+              <Alert
+                severity="error"
+                sx={{
+                  mb: 3,
+                  '& .MuiAlert-message': {
+                    width: '100%'
+                  }
+                }}
+              >
+                <Typography variant="subtitle1" gutterBottom>
+                  Document Analysis Failed
+                </Typography>
+                <Typography variant="body2" component="div">
+                  {analysisError}
+                </Typography>
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Please try the following:
+                  </Typography>
+                  <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+                    <li>Check if the document is properly uploaded and readable</li>
+                    <li>Verify your internet connection</li>
+                    <li>Try regenerating the analysis</li>
+                    <li>Contact support if the issue persists</li>
+                  </ul>
+                </Box>
+              </Alert>
+            )}
+
+            {/* Analysis Results */}
+            {isAnalyzing ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : processingResult?.analysis && processingResult.analysis.topics ? (
+              <Card sx={{ mt: 2 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Document Analysis
+                    </Typography>
+                    <MuiIconButton onClick={handleRegenerateAnalysis} color="primary">
+                      <RefreshIcon />
+                    </MuiIconButton>
+                  </Box>
+                  <Divider sx={{ my: 2 }} />
+
+                  {/* Topics with Expandable Subtopics */}
+                  <List>
+                    {processingResult?.analysis?.topics?.map((topic: string, index: number) => (
+                      <React.Fragment key={index}>
+                        <ListItem
+                          button
+                          onClick={() => handleTopicClick(topic)}
+                          sx={{
+                            backgroundColor: expandedTopics.has(topic) ? 'action.hover' : 'transparent',
+                            borderRadius: 1,
+                            mb: 1
+                          }}
+                        >
+                          <ListItemText
+                            primary={topic}
+                            secondary={`${processingResult?.analysis?.subtopics?.[topic]?.length || 0} subtopics`}
+                          />
+                          {expandedTopics.has(topic) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        </ListItem>
+                        <Collapse in={expandedTopics.has(topic)} timeout="auto" unmountOnExit>
+                          <List component="div" disablePadding>
+                            {processingResult?.analysis?.subtopics?.[topic]?.map((subtopic: string, subIndex: number) => (
+                              <ListItem key={subIndex} sx={{ pl: 4 }}>
+                                <ListItemText primary={subtopic} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </Collapse>
+                      </React.Fragment>
+                    ))}
+                  </List>
+
+                  {/* Key Concepts */}
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                    Key Concepts:
+                  </Typography>
+                  <List>
+                    {processingResult.analysis.key_concepts.map((concept: string, index: number) => (
+                      <ListItem key={index}>
+                        <ListItemText primary={concept} />
+                      </ListItem>
+                    ))}
+                  </List>
+
+                  {/* Complexity */}
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                    Complexity Level:
+                  </Typography>
+                  <Typography variant="body1" sx={{ ml: 2 }}>
+                    {processingResult.analysis.complexity}
+                  </Typography>
+
+                  {/* Suggested Structure */}
+                  <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                    Suggested Structure:
+                  </Typography>
+                  <Typography variant="body1" sx={{ ml: 2 }}>
+                    {processingResult.analysis.suggested_structure}
+                  </Typography>
+
+                  {/* Prerequisites */}
+                  {processingResult.analysis.prerequisites && processingResult.analysis.prerequisites.length > 0 && (
+                    <>
+                      <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                        Prerequisites:
+                      </Typography>
+                      <List>
+                        {processingResult.analysis.prerequisites.map((prereq: string, index: number) => (
+                          <ListItem key={index}>
+                            <ListItemText primary={prereq} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </>
+                  )}
+
+                  {/* Dependencies */}
+                  {processingResult.analysis.dependencies && processingResult.analysis.dependencies.length > 0 && (
+                    <>
+                      <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+                        Dependencies:
+                      </Typography>
+                      <List>
+                        {processingResult.analysis.dependencies.map((dep: string, index: number) => (
+                          <ListItem key={index}>
+                            <ListItemText primary={dep} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {/* Outline Section */}
+            {outlineContent && (
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" gutterBottom>
+                  Outline
+                </Typography>
+                <Paper sx={{ p: 2, maxHeight: 400, overflow: "auto" }}>
+                  <Typography variant="body1" component="pre" sx={{ whiteSpace: "pre-wrap" }}>
+                    {outlineContent}
+                  </Typography>
+                </Paper>
+              </Box>
+            )}
           </Box>
         ) : (
           <Typography>Please upload a document first</Typography>
