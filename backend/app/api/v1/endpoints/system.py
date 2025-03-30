@@ -8,7 +8,12 @@ from typing import Any, Dict, List
 
 import psutil
 from app.core.auth import get_current_admin
-from app.schemas.system import ModelSettings, SystemStats, TokenUsage
+from app.core.security import get_current_user
+from app.schemas.system import (PREDEFINED_AGENTS, Agent, AgentContext,
+                                ModelSettings, SystemStats, TokenUsage)
+from app.services.system import (delete_agent_context, get_agent_contexts,
+                                 get_model_settings, get_system_stats,
+                                 update_agent_context, update_model_settings)
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
@@ -17,20 +22,24 @@ logger = logging.getLogger(__name__)
 # File paths for persistent storage
 MODEL_SETTINGS_FILE = "model_settings.json"
 TOKEN_USAGE_FILE = "token_usage.json"
+AGENTS_FILE = "agents.json"
 
 
-def load_model_settings() -> List[ModelSettings]:
+def load_model_settings() -> Dict[str, ModelSettings]:
     """Load model settings from file."""
     if os.path.exists(MODEL_SETTINGS_FILE):
         with open(MODEL_SETTINGS_FILE, "r") as f:
-            return [ModelSettings(**model) for model in json.load(f)]
-    return []
+            data = json.load(f)
+            return {name: ModelSettings(**settings) for name, settings in data.items()}
+    return {}
 
 
-def save_model_settings(settings: List[ModelSettings]):
+def save_model_settings(settings: Dict[str, ModelSettings]):
     """Save model settings to file."""
     with open(MODEL_SETTINGS_FILE, "w") as f:
-        json.dump([model.dict() for model in settings], f, indent=2)
+        json.dump(
+            {name: settings.dict() for name, settings in settings.items()}, f, indent=2
+        )
 
 
 def load_token_usage() -> TokenUsage:
@@ -40,7 +49,11 @@ def load_token_usage() -> TokenUsage:
             data = json.load(f)
             return TokenUsage(**data)
     return TokenUsage(
-        total_tokens=0, total_cost=0.0, last_reset=datetime.now().isoformat()
+        total_tokens=0,
+        prompt_tokens=0,
+        completion_tokens=0,
+        estimated_cost=0.0,
+        last_reset=datetime.now().isoformat(),
     )
 
 
@@ -48,6 +61,68 @@ def save_token_usage(usage: TokenUsage):
     """Save token usage statistics to file."""
     with open(TOKEN_USAGE_FILE, "w") as f:
         json.dump(usage.dict(), f, indent=2)
+
+
+def load_agents() -> List[Agent]:
+    """Load agents from file."""
+    if os.path.exists(AGENTS_FILE):
+        with open(AGENTS_FILE, "r") as f:
+            return [Agent(**agent) for agent in json.load(f)]
+    return []
+
+
+def save_agents(agents: List[Agent]):
+    """Save agents to file."""
+    with open(AGENTS_FILE, "w") as f:
+        json.dump([agent.dict() for agent in agents], f, indent=2)
+
+
+@router.get("/agents", response_model=List[Agent])
+async def get_agents(current_admin: str = Depends(get_current_admin)):
+    """Get all agents."""
+    agents = load_agents()
+    if not agents:  # If no agents exist in file, return predefined agents
+        agents = PREDEFINED_AGENTS.copy()  # Make a copy to avoid modifying the original
+        save_agents(agents)  # Save predefined agents to file
+    return agents
+
+
+@router.post("/agents", response_model=Agent)
+async def create_agent(agent: Agent, current_admin: str = Depends(get_current_admin)):
+    """Create a new agent."""
+    agents = load_agents()
+    if any(a.name == agent.name for a in agents):
+        raise HTTPException(
+            status_code=400, detail="Agent with this name already exists"
+        )
+    agents.append(agent)
+    save_agents(agents)
+    return agent
+
+
+@router.put("/agents/{agent_name}", response_model=Agent)
+async def update_agent(
+    agent_name: str, agent: Agent, current_admin: str = Depends(get_current_admin)
+):
+    """Update an existing agent."""
+    agents = load_agents()
+    for i, a in enumerate(agents):
+        if a.name == agent_name:
+            agents[i] = agent
+            save_agents(agents)
+            return agent
+    raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.delete("/agents/{agent_name}")
+async def delete_agent(
+    agent_name: str, current_admin: str = Depends(get_current_admin)
+):
+    """Delete an agent."""
+    agents = load_agents()
+    agents = [a for a in agents if a.name != agent_name]
+    save_agents(agents)
+    return {"message": "Agent deleted successfully"}
 
 
 @router.get("/stats", response_model=SystemStats)
@@ -97,67 +172,109 @@ async def get_system_stats(current_admin: str = Depends(get_current_admin)):
             network_stats=network_stats,
             process_count=process_count,
             token_usage=token_usage.total_tokens,
-            estimated_cost=token_usage.total_cost,
+            estimated_cost=token_usage.estimated_cost,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/models", response_model=List[ModelSettings])
-async def get_model_settings(current_admin: str = Depends(get_current_admin)):
+@router.get("/models", response_model=Dict[str, ModelSettings])
+async def read_model_settings(current_user: str = Depends(get_current_user)):
     """Get all model settings."""
-    return load_model_settings()
+    try:
+        return await get_model_settings()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/models", response_model=ModelSettings)
 async def create_model_settings(
-    model: ModelSettings, current_admin: str = Depends(get_current_admin)
+    model_settings: ModelSettings, current_user: str = Depends(get_current_user)
 ):
     """Create new model settings."""
-    settings = load_model_settings()
+    try:
+        # Validate provider-specific settings
+        if model_settings.provider == "ollama":
+            if not model_settings.base_url:
+                model_settings.base_url = "http://localhost:11434"
+            if model_settings.api_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="API key is not required for Ollama provider",
+                )
+        elif model_settings.provider == "openai":
+            if not model_settings.api_key:
+                raise HTTPException(
+                    status_code=400, detail="API key is required for OpenAI provider"
+                )
+            if model_settings.base_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Base URL is not required for OpenAI provider",
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported provider: {model_settings.provider}",
+            )
 
-    # If the new model is being activated, deactivate all other models
-    if model.is_active:
-        for m in settings:
-            m.is_active = False
-
-    settings.append(model)
-    save_model_settings(settings)
-    return model
+        return await update_model_settings(model_settings.model_name, model_settings)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/models/{model_name}", response_model=ModelSettings)
-async def update_model_settings(
+async def update_model_settings_endpoint(
     model_name: str,
-    model: ModelSettings,
-    current_admin: str = Depends(get_current_admin),
+    model_settings: ModelSettings,
+    current_user: str = Depends(get_current_user),
 ):
-    """Update existing model settings."""
-    settings = load_model_settings()
+    """Update model settings."""
+    try:
+        # Validate provider-specific settings
+        if model_settings.provider == "ollama":
+            if not model_settings.base_url:
+                model_settings.base_url = "http://localhost:11434"
+            if model_settings.api_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="API key is not required for Ollama provider",
+                )
+        elif model_settings.provider == "openai":
+            if not model_settings.api_key:
+                raise HTTPException(
+                    status_code=400, detail="API key is required for OpenAI provider"
+                )
+            if model_settings.base_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Base URL is not required for OpenAI provider",
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported provider: {model_settings.provider}",
+            )
 
-    # If the model is being activated, deactivate all other models
-    if model.is_active:
-        for m in settings:
-            if m.model_name != model_name:  # Don't deactivate the current model
-                m.is_active = False
-
-    for i, m in enumerate(settings):
-        if m.model_name == model_name:
-            settings[i] = model
-            save_model_settings(settings)
-            return model
-    raise HTTPException(status_code=404, detail="Model not found")
+        return await update_model_settings(model_name, model_settings)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/models/{model_name}")
 async def delete_model_settings(
-    model_name: str, current_admin: str = Depends(get_current_admin)
+    model_name: str, current_user: str = Depends(get_current_user)
 ):
     """Delete model settings."""
-    settings = load_model_settings()
-    settings = [m for m in settings if m.model_name != model_name]
-    save_model_settings(settings)
-    return {"message": "Model deleted successfully"}
+    try:
+        await delete_model_settings(model_name)
+        return {"message": "Model settings deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/token-usage", response_model=TokenUsage)
@@ -170,7 +287,11 @@ async def get_token_usage(current_admin: str = Depends(get_current_admin)):
 async def reset_token_usage(current_admin: str = Depends(get_current_admin)):
     """Reset token usage statistics."""
     usage = TokenUsage(
-        total_tokens=0, total_cost=0.0, last_reset=datetime.now().isoformat()
+        total_tokens=0,
+        prompt_tokens=0,
+        completion_tokens=0,
+        estimated_cost=0.0,
+        last_reset=datetime.now().isoformat(),
     )
     save_token_usage(usage)
     return usage
@@ -186,5 +307,50 @@ async def get_agent_status(
         return {
             "default": {"status": "idle", "last_active": datetime.now().isoformat()}
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/contexts", response_model=List[AgentContext])
+async def read_agent_contexts(current_user: str = Depends(get_current_user)):
+    """Get all agent contexts."""
+    try:
+        return await get_agent_contexts()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agents/contexts", response_model=AgentContext)
+async def create_agent_context(
+    context: AgentContext, current_user: str = Depends(get_current_user)
+):
+    """Create new agent context."""
+    try:
+        return await update_agent_context(context)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/agents/contexts/{context_id}", response_model=AgentContext)
+async def update_agent_context_endpoint(
+    context_id: str,
+    context: AgentContext,
+    current_user: str = Depends(get_current_user),
+):
+    """Update agent context."""
+    try:
+        return await update_agent_context(context)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/agents/contexts/{context_id}")
+async def delete_agent_context_endpoint(
+    context_id: str, current_user: str = Depends(get_current_user)
+):
+    """Delete agent context."""
+    try:
+        await delete_agent_context(context_id)
+        return {"message": "Agent context deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

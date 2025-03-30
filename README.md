@@ -64,6 +64,37 @@ This project implements an agent-based system for transforming educational docum
    - Input: Generated content
    - Output: Interactive learning experience
 
+### AI Model Integration
+The system supports multiple AI model providers through a flexible agent architecture:
+
+1. **OpenAI Integration**
+   - Supports GPT models through OpenAI's API
+   - Secure API key management
+   - Configurable model parameters
+   - Robust error handling
+   - Context-aware message management
+
+2. **Ollama Integration**
+   - Local model support through Ollama
+   - Custom model deployment
+   - Configurable model parameters
+   - Error handling and retries
+   - Context management
+
+3. **Model Management**
+   - Centralized model configuration
+   - Provider-specific settings
+   - Model validation and health checks
+   - Performance monitoring
+   - Fallback mechanisms
+
+4. **Agent Factory**
+   - Dynamic agent creation
+   - Provider-specific agent types
+   - Configuration validation
+   - Health monitoring
+   - Load balancing
+
 ### Agent Communication
 
 - Agents communicate through a structured message passing system
@@ -98,6 +129,14 @@ This project implements an agent-based system for transforming educational docum
 - **Code Optimization**: Minifies and optimizes embedded code
 - **Browser Compatibility**: Ensures cross-browser compatibility
 - **File Size Optimization**: Balances functionality with file size
+
+### AI Model Integration
+- Provider-agnostic agent architecture
+- Configurable model settings
+- Secure API key management
+- Robust error handling
+- Performance monitoring
+- Health checks and fallbacks
 
 ## Configuration
 
@@ -242,3 +281,52 @@ The application includes a secure admin interface for debugging and system monit
    - Manage storage
    - Configure security
    - View system logs
+
+# Module Creator
+
+A tool for creating educational modules from documents using AI agents.
+
+## Generation Process Steps
+
+The module generation process follows these steps:
+
+1. **Document Upload (Step 0)**
+   - Drag and drop or file upload interface
+   - Supports common document formats (PDF, DOCX, TXT)
+   - Visual feedback on successful upload
+   - File validation and size checks
+
+2. **Document Analysis (Step 1)**
+   - Document Analyzer agent processes the uploaded file
+   - Extracts key information and structure
+   - Displays analysis results for user review
+   - Progress indicator during analysis
+
+3. **User Preferences (Step 2)**
+   - Learning objectives input
+   - Target audience selection
+   - Difficulty level setting
+   - Duration preferences
+   - Visual style preferences
+
+4. **Module Design (Step 3)**
+   - Module Planner agent creates structure
+   - Content Generator creates materials
+   - Quiz Generator creates assessments
+   - Quality Assurance reviews content
+   - Progress tracking for each agent
+
+5. **Preview & Approval (Step 4)**
+   - Preview generated module
+   - Review content quality
+   - Check learning objectives alignment
+   - Request revisions if needed
+   - Final approval step
+
+6. **Download (Step 5)**
+   - Export options (HTML, PDF)
+   - Download generated module
+   - Save to user's library
+   - Share options
+
+## Project Structure

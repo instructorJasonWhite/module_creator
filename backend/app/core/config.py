@@ -1,32 +1,27 @@
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import List
+from pydantic import AnyHttpUrl
+import os
+from dotenv import load_dotenv
 
-from pydantic import AnyHttpUrl, ConfigDict
-from pydantic_settings import BaseSettings
+load_dotenv()
 
-
-class Settings(BaseSettings):
+@dataclass
+class Settings:
     PROJECT_NAME: str = "Module Creator"
+    VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
-
-    # CORS Configuration
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"]
-
-    # JWT Configuration
     SECRET_KEY: str = "your-secret-key-here"  # Change this in production
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    BACKEND_CORS_ORIGINS: List[str] = field(default_factory=lambda: ["http://localhost:3000"])
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"  # Change this in production
 
     # Database Configuration
-    DATABASE_URL: str = "sqlite:///./module_creator.db"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./module_creator.db")
 
     # File Upload Configuration
     MAX_FILE_SIZE: int = 10485760  # 10MB in bytes
-
-    # Admin credentials
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin"  # Change in production
-
-    model_config = ConfigDict(case_sensitive=True, env_file=".env", extra="allow")
-
+    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 settings = Settings()

@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Document Analyzer",
+    "description": "Analyzes uploaded documents to extract key information, identify topics, and assess content complexity. This agent processes PDF and DOCX files to understand the structure and content of educational materials.",
+    "role": "document_analysis",
+    "contexts": [],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  },
+  {
+    "name": "Module Planner",
+    "description": "Designs the learning module structure by organizing content chunks, optimizing learning paths, and identifying prerequisites. This agent creates a logical flow for the educational content.",
+    "role": "module_planning",
+    "contexts": [],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  },
+  {
+    "name": "Content Generator",
+    "description": "Creates the actual learning content by writing explanations, generating examples, suggesting visual content, and designing interactive elements. This agent transforms raw content into engaging educational materials.",
+    "role": "content_generation",
+    "contexts": [],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  },
+  {
+    "name": "Quiz Generator",
+    "description": "Creates assessments and quizzes by generating questions, validating answers, creating explanations, and calibrating difficulty levels. This agent ensures the learning objectives are properly tested.",
+    "role": "quiz_generation",
+    "contexts": [
+      {
+        "context": "test, testies, boobies",
+        "priority": 0,
+        "is_active": true
+      }
+    ],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  },
+  {
+    "name": "Interactive Content",
+    "description": "Enhances content with interactive elements by selecting UI components, optimizing user experience, and implementing responsive design. This agent makes the learning experience engaging and accessible.",
+    "role": "interactive_content",
+    "contexts": [],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  },
+  {
+    "name": "Quality Assurance",
+    "description": "Validates content quality, adds quality metrics, creates feedback systems, and provides improvement suggestions. This agent ensures the educational content meets high standards.",
+    "role": "quality_assurance",
+    "contexts": [],
+    "is_active": true,
+    "last_active": "2025-03-29T19:27:13.923453",
+    "status": "idle"
+  }
+]

@@ -1,4 +1,5 @@
 import { logger, LogCategory } from '../utils/logger';
+import { api } from './api';
 
 export interface SystemStats {
   cpu_usage: number;
@@ -27,11 +28,13 @@ export interface SystemStats {
 
 export interface ModelSettings {
   model_name: string;
-  api_key: string;
+  api_key?: string;
   max_tokens: number;
   temperature: number;
   is_active: boolean;
-  cost_per_token: number;  // Cost per 1K tokens in USD
+  cost_per_token: number;
+  provider: string;
+  base_url?: string;
 }
 
 export interface TokenUsage {
@@ -52,6 +55,23 @@ export interface AgentStatuses {
     status: string;
     last_active: string;
   };
+}
+
+export interface AgentContext {
+  context_id: string;
+  context: string;
+  priority: number;
+  is_active: boolean;
+}
+
+export interface Agent {
+  name: string;
+  description: string;
+  role: string;
+  contexts: AgentContext[];
+  is_active: boolean;
+  last_active: string;
+  status: string;
 }
 
 const MAX_RETRIES = 3;
@@ -85,15 +105,8 @@ export const fetchWithRetry = async (url: string, options: RequestInit = {}, ret
 };
 
 export const fetchSystemStats = async (): Promise<SystemStats> => {
-  try {
-    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/stats');
-    const data = await response.json();
-    logger.debug(LogCategory.API, 'System stats fetched successfully', data, 'SystemService');
-    return data;
-  } catch (error) {
-    logger.error(LogCategory.ERROR, 'Failed to fetch system stats', error, 'SystemService');
-    throw error;
-  }
+  const response = await api.get('/api/v1/system/stats');
+  return response.data;
 };
 
 export const fetchAgentStatus = async (): Promise<AgentStatuses> => {
@@ -109,41 +122,13 @@ export const fetchAgentStatus = async (): Promise<AgentStatuses> => {
 };
 
 export const fetchModelSettings = async (): Promise<Record<string, ModelSettings>> => {
-  try {
-    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/models');
-    const data = await response.json();
-    // Convert list to dictionary using model_name as key
-    const modelDict = data.reduce((acc: Record<string, ModelSettings>, model: ModelSettings) => {
-      acc[model.model_name] = model;
-      return acc;
-    }, {});
-    logger.debug(LogCategory.API, 'Model settings fetched successfully', modelDict, 'SystemService');
-    return modelDict;
-  } catch (error) {
-    logger.error(LogCategory.ERROR, 'Failed to fetch model settings', error, 'SystemService');
-    throw error;
-  }
+  const response = await api.get('/api/v1/system/models');
+  return response.data;
 };
 
-export const updateModelSettings = async (
-  modelName: string,
-  settings: ModelSettings
-): Promise<ModelSettings> => {
-  try {
-    const response = await fetchWithRetry(`http://localhost:8000/api/v1/system/models/${modelName}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(settings),
-    });
-    const data = await response.json();
-    logger.debug(LogCategory.API, 'Model settings updated successfully', data, 'SystemService');
-    return data;
-  } catch (error) {
-    logger.error(LogCategory.ERROR, 'Failed to update model settings', error, 'SystemService');
-    throw error;
-  }
+export const updateModelSettings = async (modelName: string, settings: ModelSettings): Promise<ModelSettings> => {
+  const response = await api.put(`/api/v1/system/models/${modelName}`, settings);
+  return response.data;
 };
 
 export const fetchTokenUsage = async (): Promise<TokenUsage> => {
@@ -171,29 +156,41 @@ export const resetTokenUsage = async (): Promise<void> => {
 };
 
 export const deleteModelSettings = async (modelName: string): Promise<void> => {
-  const response = await fetchWithRetry(`http://localhost:8000/api/v1/system/models/${modelName}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to delete model: ${response.statusText}`);
-  }
+  await api.delete(`/api/v1/system/models/${modelName}`);
 };
 
 export const createModelSettings = async (settings: ModelSettings): Promise<ModelSettings> => {
+  const response = await api.post('/api/v1/system/models', settings);
+  return response.data;
+};
+
+export const fetchAgents = async (): Promise<Agent[]> => {
   try {
-    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/models', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(settings),
-    });
+    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/agents');
     const data = await response.json();
-    logger.debug(LogCategory.API, 'Model settings created successfully', data, 'SystemService');
+    logger.debug(LogCategory.API, 'Agents fetched successfully', data, 'SystemService');
     return data;
   } catch (error) {
-    logger.error(LogCategory.ERROR, 'Failed to create model settings', error, 'SystemService');
-    throw error;
+    logger.error(LogCategory.ERROR, 'Failed to fetch agents', error, 'SystemService');
+    return [];
   }
+};
+
+export const fetchAgentContexts = async (): Promise<AgentContext[]> => {
+  const response = await api.get('/api/v1/system/agents/contexts');
+  return response.data;
+};
+
+export const createAgentContext = async (context: AgentContext): Promise<AgentContext> => {
+  const response = await api.post('/api/v1/system/agents/contexts', context);
+  return response.data;
+};
+
+export const updateAgentContext = async (contextId: string, context: AgentContext): Promise<AgentContext> => {
+  const response = await api.put(`/api/v1/system/agents/contexts/${contextId}`, context);
+  return response.data;
+};
+
+export const deleteAgentContext = async (contextId: string): Promise<void> => {
+  await api.delete(`/api/v1/system/agents/contexts/${contextId}`);
 };

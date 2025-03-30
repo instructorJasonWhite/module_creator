@@ -1,0 +1,270 @@
+MODEL AGENT CREATION GUIDE
+========================
+
+This guide outlines the process and requirements for adding new AI model API structures to the module creator application.
+
+1. AGENT SYSTEM ARCHITECTURE
+---------------------------
+The agent system is built with a modular architecture consisting of:
+
+a) Base Components:
+   - BaseAgent (abstract class)
+   - AgentFactory
+   - Type definitions (types.ts)
+
+b) Model-Specific Components:
+   - Individual agent implementations (e.g., OpenAIAgent, OllamaAgent)
+   - Model-specific configurations
+   - API client implementations
+
+2. REQUIRED INTERFACES
+---------------------
+All new agents must implement:
+
+a) AgentConfig interface:
+   - name: string
+   - description: string
+   - model: ModelConfig
+   - contexts: AgentContext[]
+   - maxRetries: number
+   - timeout: number
+
+b) ModelConfig interface:
+   - name: string
+   - provider: string
+   - model: string
+   - maxTokens: number
+   - temperature: number
+   - topP: number
+   - frequencyPenalty: number
+   - presencePenalty: number
+
+c) AgentContext interface:
+   - role: string
+   - content: string
+   - priority: number
+   - isActive: boolean
+
+3. STEPS TO ADD A NEW MODEL
+--------------------------
+1. Create new agent class:
+   - Extend BaseAgent
+   - Implement process() method
+   - Add model-specific client initialization
+
+2. Add model type to AgentType enum:
+   - Add new type in AgentFactory.ts
+   - Update factory createAgent method
+
+3. Create model configuration:
+   - Define model parameters
+   - Set up API credentials
+   - Configure context handling
+
+4. IMPLEMENTATION REQUIREMENTS
+----------------------------
+New agent implementations must:
+
+a) Handle API Communication:
+   - Proper error handling
+   - Rate limiting
+   - Token management
+   - Response parsing
+
+b) Support Context Management:
+   - System prompts
+   - User contexts
+   - Priority-based ordering
+
+c) Implement Retry Logic:
+   - Use base class retry mechanism
+   - Handle API-specific errors
+   - Implement backoff strategy
+
+5. EXAMPLE IMPLEMENTATION
+------------------------
+See OpenAIAgent.ts and OllamaAgent.ts for complete examples:
+
+a) Client Setup:
+   - Initialize API client
+   - Configure authentication
+   - Set up request options
+
+b) Message Building:
+   - Handle system context
+   - Process user prompts
+   - Manage conversation history
+
+c) Response Processing:
+   - Parse API responses
+   - Extract relevant data
+   - Format output
+
+6. TESTING REQUIREMENTS
+----------------------
+New implementations should include:
+
+a) Unit Tests:
+   - API client initialization
+   - Message formatting
+   - Response parsing
+
+b) Integration Tests:
+   - End-to-end workflows
+   - Error scenarios
+   - Rate limiting
+
+7. SECURITY CONSIDERATIONS
+-------------------------
+- Store API keys securely
+- Implement proper authentication
+- Handle sensitive data appropriately
+- Follow API provider security guidelines
+
+8. COMMON PITFALLS
+------------------
+- Incorrect API version handling
+- Missing error cases
+- Improper token counting
+- Context length management
+- Rate limit handling
+
+9. MAINTENANCE
+-------------
+Regular updates needed for:
+- API version changes
+- Rate limit adjustments
+- Token pricing updates
+- Security patches
+
+10. RESOURCES
+------------
+- API Documentation
+- Rate Limit Information
+- Token Pricing
+- Error Code Reference
+- Best Practices Guide
+
+11. EXAMPLE CONFIGURATION
+------------------------
+{
+  "name": "Model Name",
+  "description": "Model Description",
+  "model": {
+    "name": "Model Identifier",
+    "provider": "Provider Name",
+    "model": "Model Version",
+    "maxTokens": 2000,
+    "temperature": 0.7,
+    "topP": 1,
+    "frequencyPenalty": 0,
+    "presencePenalty": 0
+  },
+  "contexts": [
+    {
+      "role": "system",
+      "content": "System prompt",
+      "priority": 1,
+      "isActive": true
+    }
+  ],
+  "maxRetries": 3,
+  "timeout": 30000
+}
+
+12. DEBUGGING
+------------
+Common debugging areas:
+- API response parsing
+- Token counting
+- Context management
+- Error handling
+- Rate limiting
+
+13. MONITORING
+-------------
+Key metrics to track:
+- API response times
+- Token usage
+- Error rates
+- Rate limit hits
+- Cost tracking
+
+14. FUTURE CONSIDERATIONS
+------------------------
+- Streaming support
+- Batch processing
+- Cost optimization
+- Performance tuning
+- Feature parity
+
+15. OLLAMA-SPECIFIC IMPLEMENTATION
+--------------------------------
+The Ollama agent implementation includes:
+
+a) Configuration:
+   - Default server URL: http://localhost:11434
+   - Model selection via config.model.model
+   - Temperature and top_p controls
+   - Token limit management
+
+b) API Integration:
+   - Uses /api/generate endpoint
+   - Supports streaming (currently disabled)
+   - Handles model-specific parameters
+   - Manages context window
+
+c) Context Handling:
+   - System prompts
+   - User messages
+   - Priority-based ordering
+   - Active/inactive context management
+
+d) Error Handling:
+   - API connection errors
+   - Model availability
+   - Invalid requests
+   - Response parsing
+
+e) Response Format:
+   - Success/failure status
+   - Generated content
+   - Processing metadata
+   - Error messages
+
+f) Usage Example:
+```typescript
+const config: AgentConfig = {
+  name: "Ollama Agent",
+  description: "Local Ollama model agent",
+  model: {
+    name: "llama2",
+    provider: "http://localhost:11434",
+    model: "llama2",
+    maxTokens: 2000,
+    temperature: 0.7,
+    topP: 1,
+    frequencyPenalty: 0,
+    presencePenalty: 0
+  },
+  contexts: [
+    {
+      role: "system",
+      content: "You are a helpful assistant",
+      priority: 1,
+      isActive: true
+    }
+  ],
+  maxRetries: 3,
+  timeout: 30000
+};
+
+const agent = AgentFactory.createAgent(AgentType.OLLAMA, config);
+```
+
+g) Future Enhancements:
+   - Streaming support
+   - Model availability checking
+   - Context window optimization
+   - Response streaming
+   - Batch processing 

@@ -1,0 +1,52 @@
+Module Creator Agents List
+=========================
+
+1. Document Analyzer Agent
+   - Purpose: Analyzes educational documents to extract key information
+   - Location: agents/document_analyzer/agent.py
+   - Status: Implemented
+
+2. Module Planner Agent
+   - Purpose: Plans the structure of learning modules
+   - Location: agents/module_planner/agent.py
+   - Status: Implemented
+   - Features:
+     * Creates module structure
+     * Defines prerequisites
+     * Suggests learning path
+     * Estimates duration per section
+
+3. Content Generator Agent
+   - Purpose: Generates educational content for module sections
+   - Location: agents/content_generator/agent.py
+   - Status: Implemented
+   - Features:
+     * Creates content sections
+     * Generates examples
+     * Suggests visual elements
+     * Designs interactive components
+
+4. Quiz Generator Agent
+   - Purpose: Creates assessments and quizzes
+   - Location: agents/quiz_generator/agent.py
+   - Status: Implemented
+   - Features:
+     * Generates questions
+     * Provides answers
+     * Includes explanations
+     * Rates question difficulty
+
+5. Quality Assurance Agent
+   - Purpose: Reviews and validates content and quizzes
+   - Location: agents/quality_assurance/agent.py
+   - Status: Implemented
+   - Features:
+     * Reviews content and quizzes
+     * Provides feedback
+     * Suggests improvements
+     * Assigns quality scores
+
+Agent Chain Flow:
+Document Analyzer -> Module Planner -> Content Generator -> Quiz Generator -> Quality Assurance
+
+Last Updated: [Current Date] 

@@ -28,6 +28,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  List,
+  ListItem,
+  ListItemSecondaryAction,
+  ListItemText,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -43,12 +47,34 @@ import {
   Settings as SettingsIcon,
   Token as TokenIcon,
   Delete as DeleteIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { logger, LogCategory } from '../utils/logger';
 import { SelectChangeEvent } from '@mui/material';
 import { useDebugPanel } from '../hooks/useDebugPanel';
-import { fetchSystemStats, fetchAgentStatus, SystemStats, AgentStatuses, ModelSettings, TokenUsage, fetchModelSettings, updateModelSettings, fetchTokenUsage, resetTokenUsage, deleteModelSettings, createModelSettings } from '../services/system';
+import {
+  Agent,
+  AgentContext,
+  AgentStatuses,
+  ModelSettings,
+  SystemStats,
+  TokenUsage,
+  createModelSettings,
+  deleteAgentContext,
+  deleteModelSettings,
+  fetchAgents,
+  fetchModelSettings,
+  fetchSystemStats,
+  fetchTokenUsage,
+  resetTokenUsage,
+  updateModelSettings,
+  updateAgentContext,
+  createAgentContext,
+} from '../services/system';
+import { useNavigate } from 'react-router-dom';
 
 // Styled components
 const AdminPanelContainer = styled(Paper)(({ theme }) => ({
@@ -80,15 +106,11 @@ function TabPanel(props: TabPanelProps) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`admin-tabpanel-${index}`}
-      aria-labelledby={`admin-tab-${index}`}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
       {...other}
     >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
+      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -100,7 +122,7 @@ interface DebugSettings {
 }
 
 const AdminPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState(0);
+  const [tab, setTab] = useState(0);
   const [systemStats, setSystemStats] = useState<SystemStats>({
     cpu_usage: 0,
     memory_usage: {
@@ -155,10 +177,22 @@ const AdminPanel: React.FC = () => {
     temperature: 0.7,
     is_active: true,
     cost_per_token: 0.0,
+    provider: 'openai',
+    base_url: 'http://localhost:11434'
   });
   const [panelVisible, setPanelVisible] = useState(true);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [contextDialogOpen, setContextDialogOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [newContext, setNewContext] = useState<AgentContext>({
+    context_id: crypto.randomUUID(),
+    context: '',
+    priority: 0,
+    is_active: true,
+  });
+  const navigate = useNavigate();
 
   const predefinedModels = [
     { value: 'gpt-4', label: 'GPT-4' },
@@ -178,13 +212,13 @@ const AdminPanel: React.FC = () => {
 
       const [stats, agents, models, usage] = await Promise.all([
         fetchSystemStats(),
-        fetchAgentStatus(),
+        fetchAgents(),
         fetchModelSettings(),
         fetchTokenUsage()
       ]);
 
       setSystemStats(stats);
-      setAgentStatus(agents);
+      setAgents(agents);
       setModelSettings(models);
       setTokenUsage(usage);
       setLastRefresh(new Date());
@@ -237,7 +271,7 @@ const AdminPanel: React.FC = () => {
   }, [panelVisible, fetchData]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
+    setTab(newValue);
     logger.info(LogCategory.UI, `Admin panel tab changed to ${newValue}`, null, 'AdminPanel');
   };
 
@@ -273,6 +307,8 @@ const AdminPanel: React.FC = () => {
         temperature: 0.7,
         is_active: true,
         cost_per_token: 0.0,
+        provider: 'openai',
+        base_url: 'http://localhost:11434'
       });
     }
     setIsModelDialogOpen(true);
@@ -283,11 +319,13 @@ const AdminPanel: React.FC = () => {
     setSelectedModel(null);
   };
 
-  const handleModelFormChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = event.target;
-    setModelForm((prev: ModelSettings) => ({
+  const handleModelFormChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>
+  ) => {
+    const { name, value } = event.target;
+    setModelForm(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: value
     }));
   };
 
@@ -362,6 +400,70 @@ const AdminPanel: React.FC = () => {
     return `${seconds}s ago`;
   };
 
+  const handleContextDialogOpen = (agent: Agent) => {
+    setSelectedAgent(agent);
+    setContextDialogOpen(true);
+  };
+
+  const handleContextDialogClose = () => {
+    setContextDialogOpen(false);
+    setSelectedAgent(null);
+    setNewContext({
+      context_id: crypto.randomUUID(),
+      context: '',
+      priority: 0,
+      is_active: true,
+    });
+  };
+
+  const handleContextSave = async () => {
+    if (!selectedAgent) return;
+
+    try {
+      await createAgentContext(newContext);
+      const updatedAgents = await fetchAgents();
+      setAgents(updatedAgents);
+      handleContextDialogClose();
+    } catch (error) {
+      console.error('Error saving context:', error);
+    }
+  };
+
+  const handleContextDelete = async (contextId: string) => {
+    try {
+      await deleteAgentContext(contextId);
+      const updatedAgents = await fetchAgents();
+      setAgents(updatedAgents);
+    } catch (error) {
+      console.error('Error deleting context:', error);
+    }
+  };
+
+  const handleMoveToGeneration = () => {
+    logger.info(LogCategory.UI, 'Navigating to generation page', null, 'AdminPanel');
+    navigate('/generation');
+  };
+
+  const handleAgentContextChange = (agent: Agent, newContext: string) => {
+    const updatedAgents = agents.map((a) => {
+      if (a.name === agent.name) {
+        return {
+          ...a,
+          contexts: [
+            {
+              context_id: crypto.randomUUID(),
+              context: newContext,
+              priority: 0,
+              is_active: true,
+            },
+          ],
+        };
+      }
+      return a;
+    });
+    setAgents(updatedAgents);
+  };
+
   if (isLoadingStats || isLoadingAgents || isLoadingModels || isLoadingTokens) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -370,6 +472,107 @@ const AdminPanel: React.FC = () => {
     );
   }
 
+  const renderModelDialog = () => (
+    <Dialog open={isModelDialogOpen} onClose={handleModelDialogClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{selectedModel ? 'Edit Model' : 'Add New Model'}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField
+            label="Model Name"
+            name="model_name"
+            value={modelForm.model_name}
+            onChange={handleModelFormChange}
+            fullWidth
+            required
+          />
+          
+          <FormControl fullWidth>
+            <InputLabel>Provider</InputLabel>
+            <Select
+              name="provider"
+              value={modelForm.provider}
+              onChange={handleModelFormChange}
+              label="Provider"
+            >
+              <MenuItem value="openai">OpenAI</MenuItem>
+              <MenuItem value="ollama">Ollama</MenuItem>
+            </Select>
+          </FormControl>
+
+          {modelForm.provider === 'openai' && (
+            <TextField
+              label="API Key"
+              name="api_key"
+              value={modelForm.api_key}
+              onChange={handleModelFormChange}
+              type="password"
+              fullWidth
+            />
+          )}
+
+          {modelForm.provider === 'ollama' && (
+            <TextField
+              label="Base URL"
+              name="base_url"
+              value={modelForm.base_url}
+              onChange={handleModelFormChange}
+              fullWidth
+              placeholder="http://localhost:11434"
+            />
+          )}
+
+          <TextField
+            label="Max Tokens"
+            name="max_tokens"
+            type="number"
+            value={modelForm.max_tokens}
+            onChange={handleModelFormChange}
+            fullWidth
+            required
+          />
+
+          <TextField
+            label="Temperature"
+            name="temperature"
+            type="number"
+            value={modelForm.temperature}
+            onChange={handleModelFormChange}
+            fullWidth
+            required
+            inputProps={{ min: 0, max: 2, step: 0.1 }}
+          />
+
+          <TextField
+            label="Cost per Token (USD/1K)"
+            name="cost_per_token"
+            type="number"
+            value={modelForm.cost_per_token}
+            onChange={handleModelFormChange}
+            fullWidth
+            required
+            inputProps={{ min: 0, step: 0.0001 }}
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={modelForm.is_active}
+                onChange={(e) => setModelForm(prev => ({ ...prev, is_active: e.target.checked }))}
+              />
+            }
+            label="Active"
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleModelDialogClose}>Cancel</Button>
+        <Button onClick={handleModelSave} variant="contained" color="primary">
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   return (
     <AdminPanelContainer ref={panelRef}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -377,6 +580,15 @@ const AdminPanel: React.FC = () => {
           Admin Dashboard
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            color="error"
+            size="large"
+            onClick={handleMoveToGeneration}
+            sx={{ mr: 2 }}
+          >
+            Move to Generation
+          </Button>
           <Typography variant="body2" color="text.secondary">
             Last updated: {lastRefresh.toLocaleTimeString()}
           </Typography>
@@ -394,13 +606,14 @@ const AdminPanel: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs value={activeTab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs value={tab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tab icon={<SpeedIcon />} label="Overview" />
         <Tab icon={<AppsIcon />} label="Models" />
         <Tab icon={<BugIcon />} label="Debugging" />
+        <Tab icon={<AddIcon />} label="Agents" />
       </Tabs>
 
-      <TabPanel value={activeTab} index={0}>
+      <TabPanel value={tab} index={0}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6} md={4}>
             <StatCard>
@@ -538,18 +751,18 @@ const AdminPanel: React.FC = () => {
             </Grid>
           ) : (
             <Grid container spacing={2}>
-              {Object.entries(agentStatus).map(([name, status]) => (
-                <Grid item xs={12} sm={6} md={4} key={name}>
+              {agents.map((agent) => (
+                <Grid item xs={12} sm={6} md={4} key={agent.name}>
                   <Card>
                     <CardContent>
                       <Typography variant="subtitle1" gutterBottom>
-                        {name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {agent.name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                       </Typography>
-                      <Typography color={status.status === 'active' ? 'success.main' : 'error.main'}>
-                        {status.status}
+                      <Typography color={agent.is_active ? 'success.main' : 'error.main'}>
+                        {agent.status}
                       </Typography>
                       <Typography variant="caption" color="textSecondary">
-                        Last Active: {formatTimeAgo(status.last_active)}
+                        Last Active: {formatTimeAgo(agent.last_active)}
                       </Typography>
                     </CardContent>
                   </Card>
@@ -560,7 +773,7 @@ const AdminPanel: React.FC = () => {
         </Box>
       </TabPanel>
 
-      <TabPanel value={activeTab} index={1}>
+      <TabPanel value={tab} index={1}>
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">AI Model Settings</Typography>
           <Button
@@ -622,7 +835,7 @@ const AdminPanel: React.FC = () => {
         </Grid>
       </TabPanel>
 
-      <TabPanel value={activeTab} index={2}>
+      <TabPanel value={tab} index={2}>
         <Box sx={{ maxWidth: 600 }}>
           <Typography variant="h6" gutterBottom>
             Debug Settings
@@ -664,77 +877,131 @@ const AdminPanel: React.FC = () => {
         </Box>
       </TabPanel>
 
-      <Dialog open={isModelDialogOpen} onClose={handleModelDialogClose}>
-        <DialogTitle>
-          {selectedModel ? 'Edit Model Settings' : 'Add New Model'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
-              <InputLabel>Model Name</InputLabel>
-              <Select
-                value={modelForm.model_name}
-                label="Model Name"
-                onChange={(e) => setModelForm(prev => ({ ...prev, model_name: e.target.value }))}
-                disabled={!!selectedModel}
-              >
-                {predefinedModels.map((model) => (
-                  <MenuItem key={model.value} value={model.value}>
-                    {model.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="API Key"
-              name="api_key"
-              value={modelForm.api_key}
-              onChange={handleModelFormChange}
-              type="password"
-              fullWidth
-            />
-            <TextField
-              label="Max Tokens"
-              name="max_tokens"
-              value={modelForm.max_tokens}
-              onChange={handleModelFormChange}
-              type="number"
-              fullWidth
-            />
-            <TextField
-              label="Temperature"
-              name="temperature"
-              value={modelForm.temperature}
-              onChange={handleModelFormChange}
-              type="number"
-              inputProps={{ step: 0.1, min: 0, max: 1 }}
-              fullWidth
-            />
-            <TextField
-              label="Cost per 1K Tokens (USD)"
-              name="cost_per_token"
-              value={modelForm.cost_per_token}
-              onChange={handleModelFormChange}
-              type="number"
-              inputProps={{ step: 0.0001, min: 0 }}
-              fullWidth
-              helperText="Enter the cost per 1,000 tokens in USD"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  name="is_active"
-                  checked={modelForm.is_active}
-                  onChange={handleModelFormChange}
-                />
-              }
-              label="Active"
-            />
+      <TabPanel value={tab} index={3}>
+        {isLoadingAgents ? (
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+            <CircularProgress />
           </Box>
+        ) : error ? (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        ) : agents.length === 0 ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            No agents available. Please check if the backend server is running.
+          </Alert>
+        ) : (
+          <Grid container spacing={3}>
+            {agents.map((agent) => (
+              <Grid item xs={12} md={6} key={agent.name}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Typography variant="h6">{agent.name}</Typography>
+                      <Chip
+                        label={agent.status}
+                        color={agent.is_active ? 'success' : 'default'}
+                        size="small"
+                      />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      {agent.description}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      Role: {agent.role}
+                    </Typography>
+                    <Divider sx={{ my: 2 }} />
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Additional Context
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={4}
+                        placeholder="Enter any additional context to be appended to this agent's prompt..."
+                        value={agent.contexts[0]?.context || ''}
+                        onChange={(e) => {
+                          handleAgentContextChange(agent, e.target.value);
+                        }}
+                      />
+                      <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={async () => {
+                            try {
+                              const context = agent.contexts[0] || {
+                                context_id: crypto.randomUUID(),
+                                context: '',
+                                priority: 0,
+                                is_active: true,
+                              };
+                              await updateAgentContext(agent.name, context);
+                              const updatedAgents = await fetchAgents();
+                              setAgents(updatedAgents);
+                              logger.info(LogCategory.API, `Context updated for agent ${agent.name}`, null, 'AdminPanel');
+                            } catch (error) {
+                              logger.error(LogCategory.ERROR, `Failed to update context for agent ${agent.name}`, error, 'AdminPanel');
+                              setError('Failed to save context changes');
+                            }
+                          }}
+                        >
+                          Save Context
+                        </Button>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </TabPanel>
+
+      {renderModelDialog()}
+
+      <Dialog open={contextDialogOpen} onClose={handleContextDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Context</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Context"
+            fullWidth
+            multiline
+            rows={4}
+            value={newContext.context}
+            onChange={(e) =>
+              setNewContext((prev: AgentContext) => ({ ...prev, context: e.target.value }))
+            }
+          />
+          <TextField
+            margin="dense"
+            label="Priority"
+            type="number"
+            fullWidth
+            value={newContext.priority}
+            onChange={(e) =>
+              setNewContext((prev: AgentContext) => ({ ...prev, priority: parseInt(e.target.value) || 0 }))
+            }
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={newContext.is_active}
+                onChange={(e) =>
+                  setNewContext((prev: AgentContext) => ({ ...prev, is_active: e.target.checked }))
+                }
+              />
+            }
+            label="Active"
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleModelDialogClose}>Cancel</Button>
-          <Button onClick={handleModelSave} variant="contained">
+          <Button onClick={handleContextDialogClose}>Cancel</Button>
+          <Button onClick={handleContextSave} startIcon={<SaveIcon />}>
             Save
           </Button>
         </DialogActions>
