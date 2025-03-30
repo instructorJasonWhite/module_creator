@@ -1,38 +1,46 @@
-# Dependencies
-node_modules/
-venv/
+# Python
 __pycache__/
-*.pyc
-
-# Environment variables
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 .env
+venv/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Build outputs
-/build
-/dist
-*.egg-info/
-
-# IDE and editor files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.DS_Store
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Project specific
+uploads/
+outputs/
 *.log
-
-# Testing
-/coverage
-.pytest_cache/
-
-# Production
-/build
-/dist
+.DS_Store
