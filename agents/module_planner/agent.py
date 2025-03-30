@@ -120,4 +120,4 @@ class ModulePlannerAgent(BaseAgent):
             "learning_path",
             "estimated_duration",
         ]
-        return all(field in output for field in required_fields) 
+        return all(field in output for field in required_fields)

@@ -13,7 +13,8 @@ export enum LogCategory {
   API = 'API',
   UI = 'UI',
   SYSTEM = 'SYSTEM',
-  PERFORMANCE = 'PERFORMANCE'
+  PERFORMANCE = 'PERFORMANCE',
+  UPLOAD = 'UPLOAD'
 }
 
 // Format date without date-fns
@@ -38,7 +39,7 @@ export class Logger {
   private isDevelopment: boolean;
 
   private constructor() {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
+    this.isDevelopment = process.env.NODE_ENV === 'development' || process.env.REACT_APP_DEBUG === 'true';
   }
 
   static getInstance(): Logger {

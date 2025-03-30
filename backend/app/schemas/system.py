@@ -102,6 +102,14 @@ class Agent(BaseModel):
         frozen = True  # Make the model immutable except for contexts
 
 
+class SystemStatus(BaseModel):
+    status: str = Field(default="ok")
+    version: str = Field(default="1.0.0")
+    uptime: float = Field(default=0.0)
+    last_error: Optional[str] = None
+    last_error_time: Optional[datetime] = None
+
+
 # Predefined agents for the application
 PREDEFINED_AGENTS = [
     Agent(

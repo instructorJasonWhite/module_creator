@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { logger, LogCategory } from '../utils/logger';
+import { config } from '../config';
 
 interface AdminAuthContextType {
   isAdmin: boolean;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   checkAdminStatus: () => Promise<boolean>;
@@ -23,82 +25,143 @@ export const useAdminAuth = () => {
 export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const checkAdminStatus = async (): Promise<boolean> => {
     try {
+      logger.debug(LogCategory.AUTH, 'Starting admin status check', null, 'AdminAuth');
       setError(null);
       const token = localStorage.getItem('adminToken');
+      
       if (!token) {
+        logger.debug(LogCategory.AUTH, 'No token found in localStorage', null, 'AdminAuth');
         setIsAdmin(false);
         setIsAuthenticated(false);
-        logger.debug(LogCategory.AUTH, 'No token found in localStorage', null, 'AdminAuth');
         return false;
       }
 
-      logger.debug(LogCategory.AUTH, 'Checking admin status with token', null, 'AdminAuth');
-      const response = await fetch('http://localhost:8000/api/v1/auth/verify', {
+      logger.debug(LogCategory.AUTH, 'Found token, verifying with backend', null, 'AdminAuth');
+      const response = await fetch(`${config.api.baseUrl}${config.api.endpoints.auth.verify}`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
       });
 
+      logger.debug(LogCategory.AUTH, `Backend response status: ${response.status}`, null, 'AdminAuth');
+
       if (response.ok) {
         const data = await response.json();
+        logger.debug(LogCategory.AUTH, `Verification successful: ${JSON.stringify(data)}`, null, 'AdminAuth');
         setIsAdmin(true);
         setIsAuthenticated(true);
-        logger.info(LogCategory.AUTH, `Admin status verified for user: ${data.username}`, null, 'AdminAuth');
         return true;
       } else {
         const errorData = await response.json();
+        logger.warn(LogCategory.AUTH, `Verification failed: ${JSON.stringify(errorData)}`, null, 'AdminAuth');
         setIsAdmin(false);
         setIsAuthenticated(false);
+        localStorage.removeItem('adminToken');
         setError(errorData.detail || 'Failed to verify admin status');
-        logger.warn(LogCategory.AUTH, `Admin status check failed: ${errorData.detail}`, null, 'AdminAuth');
         return false;
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      logger.error(LogCategory.ERROR, `Admin status check failed: ${errorMessage}`, error, 'AdminAuth');
       setError(errorMessage);
-      logger.error(LogCategory.ERROR, `Failed to check admin status: ${errorMessage}`, error, 'AdminAuth');
       return false;
     }
   };
 
   const login = async (username: string, password: string): Promise<boolean> => {
+    console.log('AdminAuthContext: login function called');
     try {
+      setIsLoading(true);
       setError(null);
+      console.log('AdminAuthContext: Starting login process');
       logger.debug(LogCategory.AUTH, `Attempting login for user: ${username}`, null, 'AdminAuth');
 
-      const response = await fetch('http://localhost:8000/api/v1/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          username: username,
-          password: password,
-        }),
-      });
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', password);
 
-      const data = await response.json();
+      const url = `${config.api.baseUrl}${config.api.endpoints.auth.login}`;
+      console.log('AdminAuthContext: Login URL:', url);
+      console.log('AdminAuthContext: Request body:', formData.toString());
+      logger.debug(LogCategory.AUTH, `Login URL: ${url}`, null, 'AdminAuth');
+      logger.debug(LogCategory.AUTH, `Request body: ${formData.toString()}`, null, 'AdminAuth');
+
+      // Test the connection first
+      try {
+        console.log('AdminAuthContext: Testing backend connection...');
+        const testResponse = await fetch(config.api.baseUrl);
+        console.log('AdminAuthContext: Backend connection test status:', testResponse.status);
+        if (!testResponse.ok) {
+          console.error('AdminAuthContext: Backend connection test failed:', await testResponse.text());
+          throw new Error(`Backend connection test failed with status: ${testResponse.status}`);
+        }
+      } catch (e) {
+        console.error('AdminAuthContext: Backend connection error:', e);
+        const errorMessage = e instanceof Error ? e.message : 'Failed to connect to backend';
+        throw new Error(`Cannot connect to backend server: ${errorMessage}`);
+      }
+
+      let response;
+      try {
+        console.log('AdminAuthContext: Sending login request...');
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+          },
+          body: formData.toString(),
+        });
+        console.log('AdminAuthContext: Login response status:', response.status);
+        console.log('AdminAuthContext: Response headers:', Object.fromEntries(response.headers.entries()));
+      } catch (e) {
+        console.error('AdminAuthContext: Login request failed:', e);
+        const errorMessage = e instanceof Error ? e.message : 'Network error';
+        throw new Error(`Login request failed: ${errorMessage}`);
+      }
+
+      let data;
+      try {
+        console.log('AdminAuthContext: Reading response body...');
+        const responseText = await response.text();
+        console.log('AdminAuthContext: Raw response:', responseText);
+        if (!responseText) {
+          throw new Error('Empty response from server');
+        }
+        data = JSON.parse(responseText);
+        console.log('AdminAuthContext: Parsed response:', data);
+      } catch (e) {
+        console.error('AdminAuthContext: Failed to parse response:', e);
+        throw new Error('Invalid response from server');
+      }
 
       if (response.ok) {
-        localStorage.setItem('adminToken', data.access_token);
+        const newToken = data.access_token;
+        localStorage.setItem('adminToken', newToken);
         setIsAdmin(true);
         setIsAuthenticated(true);
-        logger.info(LogCategory.AUTH, `Login successful for user: ${username}`, null, 'AdminAuth');
+        console.log('AdminAuthContext: Login successful');
         return true;
       } else {
-        setError(data.detail || 'Login failed');
-        logger.warn(LogCategory.AUTH, `Login failed: ${data.detail}`, null, 'AdminAuth');
+        const errorMessage = data.detail || 'Login failed';
+        setError(errorMessage);
+        console.log('AdminAuthContext: Login failed:', errorMessage);
         return false;
       }
     } catch (error) {
+      console.error('AdminAuthContext: Login error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setError(errorMessage);
-      logger.error(LogCategory.ERROR, `Login failed: ${errorMessage}`, error, 'AdminAuth');
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -114,8 +177,16 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  // Check auth status on mount
   useEffect(() => {
-    checkAdminStatus();
+    const initializeAuth = async () => {
+      logger.debug(LogCategory.AUTH, 'Initializing auth state', null, 'AdminAuth');
+      await checkAdminStatus();
+      setIsLoading(false);
+      logger.debug(LogCategory.AUTH, `Auth state initialized: isAdmin=${isAdmin}, isAuthenticated=${isAuthenticated}`, null, 'AdminAuth');
+    };
+
+    initializeAuth();
   }, []);
 
   return (
@@ -123,6 +194,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       value={{
         isAdmin,
         isAuthenticated,
+        isLoading,
         login,
         logout,
         checkAdminStatus,

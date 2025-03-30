@@ -96,7 +96,9 @@ class ContentGeneratorAgent(BaseAgent):
                     current_section = "interactive_elements"
                     content["interactive_elements"] = [
                         i.strip()
-                        for i in section.replace("Interactive Elements:", "").split("\n")
+                        for i in section.replace("Interactive Elements:", "").split(
+                            "\n"
+                        )
                         if i.strip()
                     ]
 
@@ -110,4 +112,4 @@ class ContentGeneratorAgent(BaseAgent):
             "visual_suggestions",
             "interactive_elements",
         ]
-        return all(field in output for field in required_fields) 
+        return all(field in output for field in required_fields)

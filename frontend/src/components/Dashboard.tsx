@@ -74,7 +74,7 @@ const Dashboard: React.FC = () => {
   ];
 
   const handleStartGeneration = () => {
-    navigate('/generation');
+    navigate('/generate');
   };
 
   const handleProcessAction = (processId: string, action: 'start' | 'stop' | 'delete') => {
@@ -215,4 +215,4 @@ const Dashboard: React.FC = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

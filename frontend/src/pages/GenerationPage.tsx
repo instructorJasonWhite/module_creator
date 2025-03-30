@@ -137,4 +137,4 @@ const GenerationPage: React.FC = () => {
   );
 };
 
-export default GenerationPage; 
+export default GenerationPage;

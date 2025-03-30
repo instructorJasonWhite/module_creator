@@ -75,6 +75,7 @@ import {
   createAgentContext,
 } from '../services/system';
 import { useNavigate } from 'react-router-dom';
+import { useAdminAuth } from '../contexts/AdminAuthContext';
 
 // Styled components
 const AdminPanelContainer = styled(Paper)(({ theme }) => ({
@@ -148,10 +149,7 @@ const AdminPanel: React.FC = () => {
     estimated_cost: 0
   });
   const [agentStatus, setAgentStatus] = useState<AgentStatuses>({});
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
-  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { isVisible, toggle, show, hide } = useDebugPanel();
   const [settings, setSettings] = useState<DebugSettings>({
@@ -163,9 +161,7 @@ const AdminPanel: React.FC = () => {
   const [modelSettings, setModelSettings] = useState<Record<string, ModelSettings>>({});
   const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
     total_tokens: 0,
-    prompt_tokens: 0,
-    completion_tokens: 0,
-    estimated_cost: 0,
+    total_cost: 0.0,
     last_reset: new Date().toISOString(),
   });
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -193,6 +189,8 @@ const AdminPanel: React.FC = () => {
     is_active: true,
   });
   const navigate = useNavigate();
+  const { isAuthenticated, isAdmin, isLoading: authLoading } = useAdminAuth();
+  const [refreshTimeout, setRefreshTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const predefinedModels = [
     { value: 'gpt-4', label: 'GPT-4' },
@@ -201,39 +199,78 @@ const AdminPanel: React.FC = () => {
   ];
 
   const fetchData = useCallback(async () => {
-    if (!panelVisible) return;
-
     try {
-      setIsLoadingStats(true);
-      setIsLoadingAgents(true);
-      setIsLoadingModels(true);
-      setIsLoadingTokens(true);
+      setIsLoading(true);
       setError(null);
 
-      const [stats, agents, models, usage] = await Promise.all([
+      // Fetch data in parallel but handle each independently
+      const [statsResult, agentsResult, settingsResult, usageResult] = await Promise.allSettled([
         fetchSystemStats(),
         fetchAgents(),
         fetchModelSettings(),
         fetchTokenUsage()
       ]);
 
-      setSystemStats(stats);
-      setAgents(agents);
-      setModelSettings(models);
-      setTokenUsage(usage);
+      // Handle each result independently
+      if (statsResult.status === 'fulfilled') {
+        setSystemStats(statsResult.value);
+        logger.debug(LogCategory.PERFORMANCE, 'System stats updated', statsResult.value, 'AdminPanel');
+      } else {
+        logger.error(LogCategory.ERROR, 'Failed to fetch system stats', statsResult.reason, 'AdminPanel');
+      }
+
+      if (agentsResult.status === 'fulfilled') {
+        setAgents(agentsResult.value);
+        logger.debug(LogCategory.PERFORMANCE, 'Agent status updated', agentsResult.value, 'AdminPanel');
+      } else {
+        logger.error(LogCategory.ERROR, 'Failed to fetch agents', agentsResult.reason, 'AdminPanel');
+      }
+
+      if (settingsResult.status === 'fulfilled') {
+        setModelSettings(settingsResult.value || {});
+        logger.debug(LogCategory.PERFORMANCE, 'Model settings updated', settingsResult.value, 'AdminPanel');
+      } else {
+        logger.error(LogCategory.ERROR, 'Failed to fetch model settings', settingsResult.reason, 'AdminPanel');
+        setModelSettings({});
+      }
+
+      if (usageResult.status === 'fulfilled') {
+        setTokenUsage(usageResult.value);
+        logger.debug(LogCategory.PERFORMANCE, 'Token usage updated', usageResult.value, 'AdminPanel');
+      } else {
+        logger.error(LogCategory.ERROR, 'Failed to fetch token usage', usageResult.reason, 'AdminPanel');
+      }
+
       setLastRefresh(new Date());
-      logger.debug(LogCategory.PERFORMANCE, 'System data updated', stats, 'AdminPanel');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch system data';
-      setError(errorMessage);
-      logger.error(LogCategory.ERROR, errorMessage, error, 'AdminPanel');
+      logger.error(LogCategory.ERROR, 'Error fetching data', error, 'AdminPanel');
+      setError('Failed to load some data. Please refresh the page.');
     } finally {
-      setIsLoadingStats(false);
-      setIsLoadingAgents(false);
-      setIsLoadingModels(false);
-      setIsLoadingTokens(false);
+      setIsLoading(false);
     }
-  }, [panelVisible]);
+  }, []);
+
+  // Add debounced refresh handler
+  const handleRefresh = useCallback(() => {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+    
+    const timeout = setTimeout(() => {
+      fetchData();
+    }, 1000); // 1 second debounce
+    
+    setRefreshTimeout(timeout);
+  }, [fetchData]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
+  }, [refreshTimeout]);
 
   // Set up visibility observer
   useEffect(() => {
@@ -259,8 +296,11 @@ const AdminPanel: React.FC = () => {
     let intervalId: NodeJS.Timeout;
 
     if (panelVisible) {
+      // Initial fetch
       fetchData();
-      intervalId = setInterval(fetchData, 30000);
+      
+      // Set up polling with a longer interval (60 seconds instead of 30)
+      intervalId = setInterval(fetchData, 60000);
     }
 
     return () => {
@@ -269,6 +309,12 @@ const AdminPanel: React.FC = () => {
       }
     };
   }, [panelVisible, fetchData]);
+
+  useEffect(() => {
+    if (!authLoading && (!isAuthenticated || !isAdmin)) {
+      navigate('/admin/login');
+    }
+  }, [isAuthenticated, isAdmin, authLoading, navigate]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);
@@ -441,7 +487,7 @@ const AdminPanel: React.FC = () => {
 
   const handleMoveToGeneration = () => {
     logger.info(LogCategory.UI, 'Navigating to generation page', null, 'AdminPanel');
-    navigate('/generation');
+    navigate('/generate');
   };
 
   const handleAgentContextChange = (agent: Agent, newContext: string) => {
@@ -464,7 +510,11 @@ const AdminPanel: React.FC = () => {
     setAgents(updatedAgents);
   };
 
-  if (isLoadingStats || isLoadingAgents || isLoadingModels || isLoadingTokens) {
+  if (!isAuthenticated || !isAdmin) {
+    return null;
+  }
+
+  if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
@@ -485,7 +535,7 @@ const AdminPanel: React.FC = () => {
             fullWidth
             required
           />
-          
+
           <FormControl fullWidth>
             <InputLabel>Provider</InputLabel>
             <Select
@@ -593,7 +643,7 @@ const AdminPanel: React.FC = () => {
             Last updated: {lastRefresh.toLocaleTimeString()}
           </Typography>
           <Tooltip title="Refresh Stats">
-            <IconButton onClick={fetchData}>
+            <IconButton onClick={handleRefresh} disabled={isLoading}>
               <RefreshIcon />
             </IconButton>
           </Tooltip>
@@ -621,7 +671,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   CPU Usage
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -637,7 +687,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Memory Usage
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -653,7 +703,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Disk Usage
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -669,7 +719,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Network Sent
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -685,7 +735,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Network Received
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -701,7 +751,7 @@ const AdminPanel: React.FC = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Active Processes
                 </Typography>
-                {isLoadingStats ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -718,7 +768,7 @@ const AdminPanel: React.FC = () => {
                   <TokenIcon sx={{ mr: 1 }} />
                   <Typography variant="subtitle2">Token Usage</Typography>
                 </Box>
-                {isLoadingTokens ? (
+                {isLoading ? (
                   <CircularProgress size={24} />
                 ) : (
                   <Typography variant="h4">
@@ -745,7 +795,7 @@ const AdminPanel: React.FC = () => {
           <Typography variant="h6" gutterBottom>
             Agent Status
           </Typography>
-          {isLoadingAgents ? (
+          {isLoading ? (
             <Grid item xs={12}>
               <CircularProgress />
             </Grid>
@@ -786,7 +836,7 @@ const AdminPanel: React.FC = () => {
         </Box>
 
         <Grid container spacing={3}>
-          {isLoadingModels ? (
+          {isLoading ? (
             <Grid item xs={12}>
               <CircularProgress />
             </Grid>
@@ -878,7 +928,7 @@ const AdminPanel: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={tab} index={3}>
-        {isLoadingAgents ? (
+        {isLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
             <CircularProgress />
           </Box>

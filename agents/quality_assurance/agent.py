@@ -69,13 +69,19 @@ class QualityAssuranceAgent(BaseAgent):
                     review["status"] = section.replace("Status:", "").strip().lower()
                 elif section.startswith("Feedback:"):
                     feedback = section.replace("Feedback:", "").strip()
-                    review["feedback"] = [f.strip() for f in feedback.split("\n") if f.strip()]
+                    review["feedback"] = [
+                        f.strip() for f in feedback.split("\n") if f.strip()
+                    ]
                 elif section.startswith("Suggestions:"):
                     suggestions = section.replace("Suggestions:", "").strip()
-                    review["suggestions"] = [s.strip() for s in suggestions.split("\n") if s.strip()]
+                    review["suggestions"] = [
+                        s.strip() for s in suggestions.split("\n") if s.strip()
+                    ]
                 elif section.startswith("Quality Score:"):
                     try:
-                        review["quality_score"] = float(section.replace("Quality Score:", "").strip())
+                        review["quality_score"] = float(
+                            section.replace("Quality Score:", "").strip()
+                        )
                     except (ValueError, IndexError):
                         review["quality_score"] = 0.0
 
@@ -89,4 +95,4 @@ class QualityAssuranceAgent(BaseAgent):
             "suggestions",
             "quality_score",
         ]
-        return all(field in output for field in required_fields) 
+        return all(field in output for field in required_fields)

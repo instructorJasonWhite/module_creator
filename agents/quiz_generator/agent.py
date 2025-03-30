@@ -41,9 +41,7 @@ class QuizGeneratorAgent(BaseAgent):
                 raise ValueError("Invalid quiz output")
 
             # Send results to quality assurance
-            await self.send_message(
-                "quality_assurance", {"type": "quiz", "data": quiz}
-            )
+            await self.send_message("quality_assurance", {"type": "quiz", "data": quiz})
 
             return {
                 "status": "success",
@@ -75,13 +73,19 @@ class QuizGeneratorAgent(BaseAgent):
                     current_question = section.replace("Question:", "").strip()
                     quiz["questions"].append(current_question)
                 elif section.startswith("Answer:") and current_question:
-                    quiz["answers"][current_question] = section.replace("Answer:", "").strip()
+                    quiz["answers"][current_question] = section.replace(
+                        "Answer:", ""
+                    ).strip()
                 elif section.startswith("Explanation:") and current_question:
-                    quiz["explanations"][current_question] = section.replace("Explanation:", "").strip()
+                    quiz["explanations"][current_question] = section.replace(
+                        "Explanation:", ""
+                    ).strip()
                 elif section.startswith("Difficulty:") and current_question:
                     difficulty = section.replace("Difficulty:", "").strip()
                     try:
-                        quiz["difficulty_ratings"][current_question] = float(difficulty.split()[0])
+                        quiz["difficulty_ratings"][current_question] = float(
+                            difficulty.split()[0]
+                        )
                     except (ValueError, IndexError):
                         quiz["difficulty_ratings"][current_question] = 0.0
 
@@ -95,4 +99,4 @@ class QuizGeneratorAgent(BaseAgent):
             "explanations",
             "difficulty_ratings",
         ]
-        return all(field in output for field in required_fields) 
+        return all(field in output for field in required_fields)

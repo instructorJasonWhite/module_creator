@@ -1,5 +1,6 @@
 import { logger, LogCategory } from '../utils/logger';
 import { api } from './api';
+import { config } from '../config';
 
 export interface SystemStats {
   cpu_usage: number;
@@ -39,9 +40,7 @@ export interface ModelSettings {
 
 export interface TokenUsage {
   total_tokens: number;
-  prompt_tokens: number;
-  completion_tokens: number;
-  estimated_cost: number;
+  total_cost: number;
   last_reset: string;
 }
 
@@ -105,13 +104,67 @@ export const fetchWithRetry = async (url: string, options: RequestInit = {}, ret
 };
 
 export const fetchSystemStats = async (): Promise<SystemStats> => {
-  const response = await api.get('/api/v1/system/stats');
-  return response.data;
+  try {
+    const response = await fetchWithRetry(`${config.api.baseUrl}/api/v1/system/stats`);
+    const data = await response.json();
+    logger.debug(LogCategory.API, 'System stats fetched successfully', data, 'SystemService');
+    return {
+      cpu_usage: data.cpu_usage || 0,
+      memory_usage: data.memory_usage || {
+        total: 0,
+        used: 0,
+        free: 0,
+        percent: 0
+      },
+      disk_usage: data.disk_usage || {
+        total: 0,
+        used: 0,
+        free: 0,
+        percent: 0
+      },
+      network_stats: data.network_stats || {
+        bytes_sent: 0,
+        bytes_recv: 0,
+        packets_sent: 0,
+        packets_recv: 0
+      },
+      process_count: data.process_count || 0,
+      token_usage: data.token_usage || 0,
+      estimated_cost: data.estimated_cost || 0.0
+    };
+  } catch (error) {
+    logger.error(LogCategory.ERROR, 'Failed to fetch system stats', error, 'SystemService');
+    // Return default values instead of throwing
+    return {
+      cpu_usage: 0,
+      memory_usage: {
+        total: 0,
+        used: 0,
+        free: 0,
+        percent: 0
+      },
+      disk_usage: {
+        total: 0,
+        used: 0,
+        free: 0,
+        percent: 0
+      },
+      network_stats: {
+        bytes_sent: 0,
+        bytes_recv: 0,
+        packets_sent: 0,
+        packets_recv: 0
+      },
+      process_count: 0,
+      token_usage: 0,
+      estimated_cost: 0.0
+    };
+  }
 };
 
 export const fetchAgentStatus = async (): Promise<AgentStatuses> => {
   try {
-    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/agents/status');
+    const response = await fetchWithRetry(`${config.api.baseUrl}/api/v1/system/agents/status`);
     const data = await response.json();
     logger.debug(LogCategory.API, 'Agent status fetched successfully', data, 'SystemService');
     return data;
@@ -133,19 +186,28 @@ export const updateModelSettings = async (modelName: string, settings: ModelSett
 
 export const fetchTokenUsage = async (): Promise<TokenUsage> => {
   try {
-    const response = await fetchWithRetry('http://localhost:8000/api/v1/system/token-usage');
+    const response = await fetchWithRetry(`${config.api.baseUrl}/api/v1/system/token-usage`);
     const data = await response.json();
     logger.debug(LogCategory.API, 'Token usage fetched successfully', data, 'SystemService');
-    return data;
+    return {
+      total_tokens: data.total_tokens || 0,
+      total_cost: data.total_cost || 0.0,
+      last_reset: data.last_reset || new Date().toISOString()
+    };
   } catch (error) {
     logger.error(LogCategory.ERROR, 'Failed to fetch token usage', error, 'SystemService');
-    throw error;
+    // Return default values instead of throwing
+    return {
+      total_tokens: 0,
+      total_cost: 0.0,
+      last_reset: new Date().toISOString()
+    };
   }
 };
 
 export const resetTokenUsage = async (): Promise<void> => {
   try {
-    await fetchWithRetry('http://localhost:8000/api/v1/system/token-usage/reset', {
+    await fetchWithRetry(`${config.api.baseUrl}/api/v1/system/token-usage/reset`, {
       method: 'POST',
     });
     logger.debug(LogCategory.API, 'Token usage reset successfully', null, 'SystemService');

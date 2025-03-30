@@ -1,11 +1,12 @@
-import os
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from typing import Dict, Any
-from app.services.document_processor import DocumentProcessor
-from app.core.config import settings
+import os
 from pathlib import Path
+from typing import Any, Dict
+
+from app.core.config import settings
+from app.services.document_processor import DocumentProcessor
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -13,14 +14,15 @@ logger = logging.getLogger(__name__)
 # Initialize document processor
 document_processor = DocumentProcessor()
 
+
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Upload and process a document
-    
+
     Args:
         file: The uploaded file
-        
+
     Returns:
         Dictionary containing processed document information
     """
@@ -30,7 +32,7 @@ async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
         if file_extension not in document_processor.SUPPORTED_FORMATS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported file format. Supported formats: {', '.join(document_processor.SUPPORTED_FORMATS.keys())}"
+                detail=f"Unsupported file format. Supported formats: {', '.join(document_processor.SUPPORTED_FORMATS.keys())}",
             )
 
         # Create upload directory if it doesn't exist
@@ -53,13 +55,12 @@ async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
             content={
                 "status": "success",
                 "message": "Document processed successfully",
-                "data": result
+                "data": result,
             }
         )
 
     except Exception as e:
         logger.error(f"Error processing document: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Error processing document: {str(e)}"
-        ) 
+            status_code=500, detail=f"Error processing document: {str(e)}"
+        )

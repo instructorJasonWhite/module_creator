@@ -49,4 +49,4 @@ Module Creator Agents List
 Agent Chain Flow:
 Document Analyzer -> Module Planner -> Content Generator -> Quiz Generator -> Quality Assurance
 
-Last Updated: [Current Date] 
+Last Updated: [Current Date]

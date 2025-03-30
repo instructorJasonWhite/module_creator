@@ -17,10 +17,16 @@ import {
   Container,
   Button,
   Grid,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { config } from '../config';
+import { logger, LogCategory } from '../utils/logger';
 
 // Styled components
 const UploadArea = styled(Paper)(({ theme }) => ({
@@ -56,7 +62,7 @@ interface ProcessingResult {
   processing_info: any;
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
+const MAX_FILE_SIZE = config.upload.maxFileSize;
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
@@ -76,6 +82,7 @@ const steps = [
 ];
 
 const GenerationPage: React.FC = () => {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -119,6 +126,7 @@ const GenerationPage: React.FC = () => {
   };
 
   const uploadFile = async (file: File) => {
+    logger.debug(LogCategory.UPLOAD, `Starting file upload: ${file.name}`, null, 'GenerationPage');
     setIsUploading(true);
     setUploadError(null);
     setUploadSuccess(false);
@@ -129,23 +137,29 @@ const GenerationPage: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await axios.post('/api/v1/documents/upload', formData, {
+      logger.debug(LogCategory.UPLOAD, `Sending request to ${config.api.baseUrl}${config.api.endpoints.documents.upload}`, null, 'GenerationPage');
+
+      const response = await axios.post(`${config.api.baseUrl}${config.api.endpoints.documents.upload}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
         onUploadProgress: (progressEvent) => {
           const progress = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
           setUploadProgress(progress);
+          logger.debug(LogCategory.UPLOAD, `Upload progress: ${Math.round(progress)}%`, null, 'GenerationPage');
         },
       });
 
+      logger.debug(LogCategory.UPLOAD, 'File uploaded successfully', response.data, 'GenerationPage');
       setProcessingResult(response.data.data);
       setUploadSuccess(true);
-      
+
       // Move to the next step after successful upload
       setCurrentStep(1);
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Failed to upload file');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload file';
+      logger.error(LogCategory.ERROR, `File upload failed: ${errorMessage}`, error, 'GenerationPage');
+      setUploadError(errorMessage);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -170,8 +184,30 @@ const GenerationPage: React.FC = () => {
     await uploadFile(file);
   };
 
+  const handleAdminClick = () => {
+    logger.info(LogCategory.UI, 'Navigating to admin panel', null, 'GenerationPage');
+    navigate('/admin');
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box sx={{ position: 'fixed', top: 16, left: 16, zIndex: 1000 }}>
+        <Tooltip title="Admin Panel">
+          <IconButton
+            onClick={handleAdminClick}
+            sx={{
+              backgroundColor: 'background.paper',
+              boxShadow: 1,
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+          >
+            <SettingsIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
       <Paper sx={{ mb: 4, p: 3 }}>
         <Stepper activeStep={currentStep} alternativeLabel>
           {steps.map((label) => (
@@ -310,9 +346,9 @@ const GenerationPage: React.FC = () => {
                   Document Content
                 </Typography>
               </Box>
-              <Paper 
-                variant="outlined" 
-                sx={{ 
+              <Paper
+                variant="outlined"
+                sx={{
                   p: 2,
                   height: '500px',
                   overflow: 'auto',
@@ -377,4 +413,4 @@ const GenerationPage: React.FC = () => {
   );
 };
 
-export default GenerationPage; 
+export default GenerationPage;
