@@ -73,7 +73,7 @@ const AdminLogin: React.FC = () => {
       const success = await login(username, password);
       console.log('Login function returned:', success);
       addDebugInfo(`Login result: ${success}`);
-      
+
       if (success) {
         addDebugInfo('Login successful, navigating to /admin');
         navigate('/admin');
@@ -166,7 +166,7 @@ const AdminLogin: React.FC = () => {
         </Box>
 
         <Divider sx={{ width: '100%', my: 2 }} />
-        
+
         <Box sx={{ width: '100%' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="subtitle2" color="textSecondary">

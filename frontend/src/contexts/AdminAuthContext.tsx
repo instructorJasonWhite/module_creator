@@ -33,7 +33,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       logger.debug(LogCategory.AUTH, 'Starting admin status check', null, 'AdminAuth');
       setError(null);
       const token = localStorage.getItem('adminToken');
-      
+
       if (!token) {
         logger.debug(LogCategory.AUTH, 'No token found in localStorage', null, 'AdminAuth');
         setIsAdmin(false);

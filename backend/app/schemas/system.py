@@ -48,17 +48,9 @@ class SystemStats(BaseModel):
 class ModelSettings(BaseModel):
     """AI model settings."""
 
-    model_name: str
-    api_key: Optional[str] = None  # Optional for Ollama
-    max_tokens: int = Field(ge=1)
-    temperature: float = Field(ge=0, le=2)
-    is_active: bool = True
-    cost_per_token: float = Field(ge=0)
-    provider: str = "openai"  # 'openai' or 'ollama'
-    base_url: Optional[str] = "http://localhost:11434"  # For Ollama server URL
-
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),
+        "json_schema_extra": {
             "example": {
                 "model_name": "gpt-4",
                 "api_key": "sk-...",
@@ -68,7 +60,17 @@ class ModelSettings(BaseModel):
                 "cost_per_token": 0.03,
                 "provider": "openai",
             }
-        }
+        },
+    }
+
+    model_name: str
+    api_key: Optional[str] = None  # Optional for Ollama
+    max_tokens: int = Field(ge=1)
+    temperature: float = Field(ge=0, le=2)
+    is_active: bool = True
+    cost_per_token: float = Field(ge=0)
+    provider: str = "openai"  # 'openai' or 'ollama'
+    base_url: Optional[str] = "http://localhost:11434"  # For Ollama server URL
 
 
 class TokenUsage(BaseModel):
@@ -98,8 +100,7 @@ class Agent(BaseModel):
     last_active: str = Field(default_factory=lambda: datetime.now().isoformat())
     status: str = "idle"
 
-    class Config:
-        frozen = True  # Make the model immutable except for contexts
+    model_config = {"frozen": True}  # Make the model immutable except for contexts
 
 
 class SystemStatus(BaseModel):

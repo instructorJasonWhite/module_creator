@@ -255,11 +255,11 @@ const AdminPanel: React.FC = () => {
     if (refreshTimeout) {
       clearTimeout(refreshTimeout);
     }
-    
+
     const timeout = setTimeout(() => {
       fetchData();
     }, 1000); // 1 second debounce
-    
+
     setRefreshTimeout(timeout);
   }, [fetchData]);
 
@@ -298,7 +298,7 @@ const AdminPanel: React.FC = () => {
     if (panelVisible) {
       // Initial fetch
       fetchData();
-      
+
       // Set up polling with a longer interval (60 seconds instead of 30)
       intervalId = setInterval(fetchData, 60000);
     }

@@ -1,6 +1,15 @@
 # Module Creator Backend
 
-This is the backend service for the Module Creator application. It provides a FastAPI-based REST API with authentication and other necessary endpoints.
+This is the backend service for the Module Creator application. It provides a FastAPI-based REST API with authentication, document analysis, and educational content generation capabilities.
+
+## Features
+
+- JWT-based authentication
+- Document analysis and outline generation
+- File upload and management
+- User preferences management
+- Educational content generation
+- Comprehensive API documentation
 
 ## Setup
 
@@ -48,9 +57,52 @@ The API uses JWT-based authentication. To authenticate:
    Authorization: Bearer <your_token>
    ```
 
+## API Endpoints
+
+### Document Analysis
+- POST `/api/v1/agents/analyze` - Analyze uploaded documents
+- GET `/api/v1/documents/outline/{filename}` - Retrieve generated outlines
+
+### User Preferences
+- GET `/api/v1/preferences/me` - Get current user preferences
+- PUT `/api/v1/preferences/me` - Update user preferences
+
+### System Management
+- GET `/api/v1/system/agents` - List available agents
+- GET `/api/v1/system/models` - List available models
+- GET `/api/v1/system/health` - Check system health
+
 ## Development
 
 - The server runs in development mode with hot reload enabled
 - API endpoints are organized in the `app/api/v1/endpoints` directory
 - Models and schemas are in their respective directories
 - Configuration is managed through environment variables
+- Code formatting is handled by black
+- Type checking is performed by mypy
+- Linting is done with flake8
+
+## Recent Updates
+
+- Fixed Pydantic model configuration issues
+- Implemented document analysis functionality
+- Added outline generation and retrieval
+- Enhanced error handling for file operations
+- Improved API documentation
+- Added comprehensive logging system
+
+## Project Structure
+
+```
+backend/
+├── app/
+│   ├── api/            # API endpoints
+│   ├── core/           # Core functionality
+│   ├── crud/           # Database operations
+│   ├── models/         # Database models
+│   ├── schemas/        # Pydantic schemas
+│   └── services/       # Business logic
+├── tests/              # Test files
+├── uploads/            # Uploaded files
+└── outputs/           # Generated content
+```

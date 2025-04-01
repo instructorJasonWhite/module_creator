@@ -1,8 +1,9 @@
 import logging
+
+from app.api.v1.api import api_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.api import api_router
 from .core.config import settings
 
 # Configure logging
@@ -32,14 +33,33 @@ app.add_middleware(
 logger.debug("Including API router...")
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application startup...")
-    logger.debug(f"Current settings: {settings.dict()}")
+    # Log only essential settings
+    essential_settings = {
+        "API_V1_STR": settings.API_V1_STR,
+        "PROJECT_NAME": settings.PROJECT_NAME,
+        "CORS_ORIGINS": settings.CORS_ORIGINS,
+        "UPLOAD_DIR": settings.UPLOAD_DIR,
+        "DATABASE_URL": settings.DATABASE_URL,
+        "MAX_FILE_SIZE": settings.MAX_FILE_SIZE,
+        "REDIS_URL": settings.REDIS_URL,
+    }
+    logger.debug(f"Essential settings: {essential_settings}")
+
+    # Log all registered routes
+    logger.info("=== Registered Routes ===")
+    for route in app.routes:
+        logger.info(f"{route.methods} {route.path}")
+    logger.info("========================")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Application shutdown...")
+
 
 @app.get("/")
 async def root():

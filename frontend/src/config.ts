@@ -1,7 +1,7 @@
-import axios from 'axios';
 import { logger, LogCategory } from './utils/logger';
+import api from './utils/axios';
 
-const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const apiUrl = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 logger.debug(LogCategory.AUTH, `API URL configured: ${apiUrl}`, null, 'Config');
 
 export const config = {
@@ -19,6 +19,9 @@ export const config = {
       agents: {
         analyze: '/api/v1/agents/analyze',
       },
+      preferences: {
+        me: '/api/v1/preferences/me',
+      },
     },
   },
   upload: {
@@ -26,21 +29,4 @@ export const config = {
   },
 };
 
-// Create axios instance with default config
-export const api = axios.create({
-  baseURL: config.api.baseUrl,
-  withCredentials: true,
-});
-
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    logger.error(LogCategory.API, 'API request failed', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-    }, 'Config');
-    return Promise.reject(error);
-  }
-);
+export { api };

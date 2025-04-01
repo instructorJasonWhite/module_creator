@@ -19,6 +19,7 @@ import {
   Description as DocumentIcon,
   School as ModuleIcon,
   Refresh as RefreshIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 
@@ -74,7 +75,11 @@ const Dashboard: React.FC = () => {
   ];
 
   const handleStartGeneration = () => {
-    navigate('/generate');
+    navigate('/generator');
+  };
+
+  const handleNavigateToPreferences = () => {
+    navigate('/preferences');
   };
 
   const handleProcessAction = (processId: string, action: 'start' | 'stop' | 'delete') => {
@@ -104,20 +109,30 @@ const Dashboard: React.FC = () => {
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Grid container spacing={3}>
-        {/* Quick Actions */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h6">Quick Actions</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h4" component="h1">
+              Dashboard
+            </Typography>
+            <Box>
+              <Button
+                variant="outlined"
+                startIcon={<SettingsIcon />}
+                onClick={handleNavigateToPreferences}
+                sx={{ mr: 2 }}
+              >
+                Preferences
+              </Button>
               <Button
                 variant="contained"
-                startIcon={<DocumentIcon />}
+                color="primary"
+                startIcon={<PlayIcon />}
                 onClick={handleStartGeneration}
               >
-                Start New Generation
+                Start Generation
               </Button>
             </Box>
-          </Paper>
+          </Box>
         </Grid>
 
         {/* Active Processes */}

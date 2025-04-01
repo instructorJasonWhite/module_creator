@@ -47,11 +47,11 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
 
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    logger.debug("="*50)
+    logger.debug("=" * 50)
     logger.debug("Login request received")
     logger.debug(f"Request body: username={form_data.username}, password=***")
-    logger.debug("="*50)
-    
+    logger.debug("=" * 50)
+
     if form_data.username != settings.ADMIN_USERNAME:
         logger.warning(f"Login failed: Invalid username '{form_data.username}'")
         raise HTTPException(
@@ -59,7 +59,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if form_data.password != settings.ADMIN_PASSWORD:
         logger.warning("Login failed: Invalid password for admin user")
         raise HTTPException(
@@ -67,7 +67,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     logger.info(f"Successful login for user: {form_data.username}")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(

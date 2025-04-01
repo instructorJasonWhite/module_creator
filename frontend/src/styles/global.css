@@ -1,0 +1,12 @@
+/* Snackbar styles */
+.MuiSnackbar-root {
+  position: fixed !important;
+  z-index: 9999 !important;
+}
+
+.MuiSnackbar-anchorOriginTopRight {
+  top: 16px !important;
+  right: 16px !important;
+}
+
+/* Add any other global styles here */

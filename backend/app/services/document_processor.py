@@ -42,12 +42,19 @@ class DocumentProcessor:
         self.h2t.ignore_tables = False
         logger.debug("DocumentProcessor initialized")
 
-    async def process_document(self, file_path: str) -> Dict[str, Any]:
+    async def process_document(
+        self,
+        file_path: str,
+        agent_context: Optional[str] = None,
+        original_filename: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Process a document and convert it to text
 
         Args:
             file_path: Path to the document file
+            agent_context: Optional context to be passed to the document analyzer agent
+            original_filename: Original filename to use when saving processed text
 
         Returns:
             Dictionary containing:
@@ -55,17 +62,20 @@ class DocumentProcessor:
                 - metadata: Document metadata
                 - format: Original file format
                 - processing_info: Additional processing details
+                - agent_context: Context for the document analyzer agent
         """
         try:
-            logger.debug(f"Processing document: {file_path}")
+            logger.info(f"Starting document processing for file: {file_path}")
             file_path = Path(file_path)
+
+            # Check if file exists
             if not file_path.exists():
                 logger.error(f"File not found: {file_path}")
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             # Check file size
             file_size = file_path.stat().st_size
-            logger.debug(f"File size: {file_size} bytes")
+            logger.info(f"File size: {file_size} bytes")
             if file_size > self.MAX_FILE_SIZE:
                 logger.error(
                     f"File size exceeds limit: {file_size} > {self.MAX_FILE_SIZE}"
@@ -75,12 +85,14 @@ class DocumentProcessor:
                 )
 
             file_extension = file_path.suffix.lower()
-            logger.debug(f"File extension: {file_extension}")
+            logger.info(f"Processing file with extension: {file_extension}")
+
             if file_extension not in self.SUPPORTED_FORMATS:
                 logger.error(f"Unsupported file format: {file_extension}")
                 raise ValueError(f"Unsupported file format: {file_extension}")
 
             # Process based on file type
+            logger.info(f"Starting {file_extension} processing")
             if file_extension in [".pdf"]:
                 logger.debug("Processing PDF file")
                 result = await self._process_pdf(file_path)
@@ -100,12 +112,19 @@ class DocumentProcessor:
                 logger.error(f"Unsupported file format: {file_extension}")
                 raise ValueError(f"Unsupported file format: {file_extension}")
 
-            logger.debug(
+            logger.info(
                 f"Document processed successfully. Text length: {len(result['text'])}"
             )
 
-            # Save the extracted text to a file
-            await self._save_extracted_text(result["text"], file_path.stem)
+            # Save the extracted text to a file if original filename is provided
+            if original_filename:
+                base_name = os.path.splitext(original_filename)[0]
+                await self._save_extracted_text(result["text"], base_name)
+
+            # Add agent context to the result
+            if agent_context:
+                logger.debug(f"Adding agent context to result: {agent_context}")
+                result["agent_context"] = agent_context
 
             return result
 
@@ -124,13 +143,15 @@ class DocumentProcessor:
             original_filename: The original filename (without extension)
         """
         try:
+            # Get the backend directory (2 levels up from this file)
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             # Create outputs/anal directory if it doesn't exist
-            output_dir = Path(__file__).parent.parent.parent.parent / "outputs" / "anal"
+            output_dir = os.path.join(base_dir, "outputs", "anal")
             logger.debug(f"Creating output directory: {output_dir}")
-            output_dir.mkdir(parents=True, exist_ok=True)
+            os.makedirs(output_dir, exist_ok=True)
 
             # Create the output file path
-            output_file = output_dir / f"{original_filename}.txt"
+            output_file = os.path.join(output_dir, f"{original_filename}.txt")
             logger.debug(f"Saving text to: {output_file}")
 
             # Write the text to the file
@@ -146,38 +167,104 @@ class DocumentProcessor:
         """Process PDF files"""
         text = []
         metadata = {}
+        processing_info = {
+            "pages": 0,
+            "is_scanned": False,
+            "ocr_used": False,
+            "error": None,
+            "status": "processing",
+            "current_page": 0,
+        }
 
         try:
-            with open(file_path, "rb") as file:
-                pdf_reader = PyPDF2.PdfReader(file)
+            logger.info(f"Starting PDF processing for file: {file_path}")
 
-                # Extract metadata
-                metadata = pdf_reader.metadata if pdf_reader.metadata else {}
+            # Validate PDF file
+            if not file_path.exists():
+                processing_info["error"] = "File not found"
+                processing_info["status"] = "error"
+                logger.error(f"PDF file not found: {file_path}")
+                raise FileNotFoundError(f"File not found: {file_path}")
 
-                # Extract text from each page
-                for page in pdf_reader.pages:
-                    text.append(page.extract_text())
+            # Check if file is a valid PDF
+            try:
+                with open(file_path, "rb") as file:
+                    # Read first 4 bytes to check PDF signature
+                    header = file.read(4)
+                    if header != b"%PDF":
+                        processing_info["error"] = "Invalid PDF file"
+                        processing_info["status"] = "error"
+                        logger.error(f"Invalid PDF signature in file: {file_path}")
+                        raise ValueError("Invalid PDF file format")
 
-                # Handle scanned PDFs if no text was extracted
-                if not any(text):
-                    logger.warning(
-                        f"No text extracted from PDF {file_path}, attempting OCR"
-                    )
-                    text = await self._process_scanned_pdf(file_path)
+                    # Reset file pointer
+                    file.seek(0)
+                    pdf_reader = PyPDF2.PdfReader(file)
+
+                    # Extract metadata
+                    metadata = pdf_reader.metadata if pdf_reader.metadata else {}
+                    processing_info["pages"] = len(pdf_reader.pages)
+                    logger.info(f"PDF has {processing_info['pages']} pages")
+
+                    # Extract text from each page
+                    for i, page in enumerate(pdf_reader.pages):
+                        try:
+                            processing_info["current_page"] = i + 1
+                            processing_info[
+                                "status"
+                            ] = f"Processing page {i+1}/{len(pdf_reader.pages)}"
+                            logger.debug(
+                                f"Processing page {i+1}/{len(pdf_reader.pages)}"
+                            )
+
+                            page_text = page.extract_text()
+                            if page_text.strip():
+                                text.append(page_text)
+                                logger.debug(
+                                    f"Successfully extracted text from page {i+1}, length: {len(page_text)}"
+                                )
+                            else:
+                                logger.warning(f"No text extracted from page {i+1}")
+                                text.append("")
+                        except Exception as page_error:
+                            logger.warning(
+                                f"Error extracting text from page {i+1}: {str(page_error)}"
+                            )
+                            text.append("")  # Add empty string for failed page
+                            continue
+
+                    # Handle scanned PDFs if no text was extracted
+                    if not any(text):
+                        logger.warning(
+                            f"No text extracted from PDF {file_path}, attempting OCR"
+                        )
+                        processing_info["is_scanned"] = True
+                        processing_info["status"] = "Running OCR"
+                        text = await self._process_scanned_pdf(file_path)
+                        processing_info["ocr_used"] = True
+                        logger.info("OCR completed successfully")
+
+            except Exception as pdf_error:
+                processing_info["error"] = str(pdf_error)
+                processing_info["status"] = "error"
+                logger.error(f"Error processing PDF: {str(pdf_error)}", exc_info=True)
+                raise
 
         except Exception as e:
-            logger.error(f"Error processing PDF {file_path}: {str(e)}")
+            logger.error(f"Error processing PDF {file_path}: {str(e)}", exc_info=True)
+            processing_info["error"] = str(e)
+            processing_info["status"] = "error"
             raise
 
+        processing_info["status"] = "completed"
+        logger.info(
+            f"PDF processing completed successfully. Total text length: {len(''.join(text))}"
+        )
         return {
             "text": "\n".join(text),
             "metadata": metadata,
             "format": "pdf",
-            "processing_info": {
-                "pages": len(pdf_reader.pages),
-                "is_scanned": not any(text),
-                "ocr_used": not any(text),
-            },
+            "processing_info": processing_info,
         }
 
     async def _process_scanned_pdf(self, file_path: Path) -> list[str]:

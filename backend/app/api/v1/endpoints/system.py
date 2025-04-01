@@ -10,7 +10,8 @@ import psutil
 from app.core.auth import get_current_admin
 from app.core.security import get_current_user
 from app.schemas.system import (PREDEFINED_AGENTS, Agent, AgentContext,
-                                ModelSettings, SystemStats, TokenUsage, SystemStatus)
+                                ModelSettings, SystemStats, SystemStatus,
+                                TokenUsage)
 from app.services.system import (delete_agent_context, get_agent_contexts,
                                  get_model_settings, get_system_stats,
                                  update_agent_context, update_model_settings)
@@ -36,7 +37,10 @@ def load_model_settings() -> Dict[str, ModelSettings]:
                     return {item["model_name"]: ModelSettings(**item) for item in data}
                 elif isinstance(data, dict):
                     # Handle dictionary format
-                    return {name: ModelSettings(**settings) for name, settings in data.items()}
+                    return {
+                        name: ModelSettings(**settings)
+                        for name, settings in data.items()
+                    }
                 else:
                     logger.error(f"Invalid model settings format: {type(data)}")
                     return {}
@@ -64,16 +68,14 @@ def load_token_usage() -> TokenUsage:
                 return TokenUsage(
                     total_tokens=data.get("total_tokens", 0),
                     total_cost=data.get("total_cost", 0.0),
-                    last_reset=data.get("last_reset", datetime.now().isoformat())
+                    last_reset=data.get("last_reset", datetime.now().isoformat()),
                 )
     except Exception as e:
         logger.error(f"Failed to load token usage: {str(e)}", exc_info=True)
-    
+
     # Return default values if file doesn't exist or there's an error
     return TokenUsage(
-        total_tokens=0,
-        total_cost=0.0,
-        last_reset=datetime.now().isoformat()
+        total_tokens=0, total_cost=0.0, last_reset=datetime.now().isoformat()
     )
 
 
@@ -194,7 +196,9 @@ async def get_system_stats(current_admin: str = Depends(get_current_admin)):
         # Get token usage
         token_usage = load_token_usage()
 
-        logger.debug(f"Retrieved system stats: {SystemStats(cpu_usage=cpu_percent, memory_usage=memory_usage, disk_usage=disk_usage, network_stats=network_stats, process_count=process_count, token_usage=token_usage.total_tokens, estimated_cost=token_usage.total_cost).dict()}")
+        logger.debug(
+            f"Retrieved system stats: {SystemStats(cpu_usage=cpu_percent, memory_usage=memory_usage, disk_usage=disk_usage, network_stats=network_stats, process_count=process_count, token_usage=token_usage.total_tokens, estimated_cost=token_usage.total_cost).dict()}"
+        )
         return SystemStats(
             cpu_usage=cpu_percent,
             memory_usage=memory_usage,
@@ -424,7 +428,7 @@ async def health_check():
         response = {
             "status": "healthy",
             "version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
         logger.debug(f"Health check response: {response}")
         return response

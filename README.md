@@ -156,29 +156,136 @@ Each agent can be configured through:
 
 ## Development Setup
 
-1. Clone repository
-2. Install dependencies:
+### Prerequisites
+
+#### Windows
+1. Install Python 3.8 or higher from [python.org](https://www.python.org/downloads/)
+2. Install Node.js and npm from [nodejs.org](https://nodejs.org/)
+3. Install Git from [git-scm.com](https://git-scm.com/download/win)
+
+#### Linux (Ubuntu/Debian)
+1. Install system dependencies:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install python3-dev python3-pip python3-venv nodejs npm git
+   ```
+2. For PDF processing support:
+   ```bash
+   sudo apt-get install libmupdf-dev
+   ```
+3. For PostgreSQL support:
+   ```bash
+   sudo apt-get install libpq-dev
+   ```
+
+### Project Setup
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd module-creator
+   ```
+
+2. Verify the build environment:
+   ```bash
+   python verify_build.py
+   ```
+   This script will check:
+   - Python version (3.8+ required)
+   - Node.js version (16.x+ required)
+   - Required files presence
+   - Environment file setup
+   - Dependency installation capability
+
+3. Set up Python virtual environment:
+   ```bash
+   # Windows
+   python -m venv venv
+   .\venv\Scripts\activate
+
+   # Linux
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+4. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
+   ```
+
+5. Set up frontend:
+   ```bash
+   cd frontend
    npm install
+   cd ..
    ```
-3. Configure environment variables
-4. Start the agent services:
+
+6. Configure environment variables:
    ```bash
-   python -m agents.document_analyzer
-   python -m agents.module_planner
-   python -m agents.content_generator
-   python -m agents.quiz_generator
-   python -m agents.interactive_content
+   # Windows
+   copy .env.example .env
+
+   # Linux
+   cp .env.example .env
    ```
-5. Start the API server:
+   Edit the `.env` file with your configuration values.
+
+### Running the Application
+
+1. Start the development servers:
    ```bash
-   uvicorn main:app --reload
+   python run_dev.py
    ```
-6. Start the frontend:
-   ```bash
-   npm start
-   ```
+   This will start both the backend (FastAPI) and frontend (React) servers.
+
+2. Access the application:
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Port Conflicts**
+   - If ports 3000 or 8000 are already in use, modify the ports in:
+     - Frontend: `frontend/package.json` (proxy setting)
+     - Backend: `backend/run.py`
+
+2. **Python Dependencies**
+   - If you encounter build errors for `psycopg2-binary`:
+     - Windows: No additional steps needed
+     - Linux: Install PostgreSQL development files: `sudo apt-get install libpq-dev`
+
+3. **PDF Processing Issues**
+   - If PyMuPDF fails to install:
+     - Windows: No additional steps needed
+     - Linux: Install MuPDF development files: `sudo apt-get install libmupdf-dev`
+
+4. **Node.js Version Conflicts**
+   - The project is tested with Node.js 16.x and 18.x
+   - If you encounter issues, try using Node Version Manager (nvm) to switch versions
+
+5. **Database Connection**
+   - Ensure PostgreSQL is running
+   - Verify database credentials in `.env`
+   - Check database migrations are up to date:
+     ```bash
+     alembic upgrade head
+     ```
+
+#### Getting Help
+
+If you encounter issues:
+1. Check the error messages in the terminal
+2. Review the logs in the `logs` directory
+3. Check the [Issues](https://github.com/yourusername/module-creator/issues) page
+4. Create a new issue with:
+   - Your operating system and version
+   - Python version (`python --version`)
+   - Node.js version (`node --version`)
+   - Full error message
+   - Steps to reproduce the issue
 
 ## Environment Variables
 Required environment variables:

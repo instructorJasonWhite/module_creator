@@ -32,12 +32,14 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { api, config } from '../config';
+import { config } from '../config';
+import api from '../utils/axios';
 import { logger, LogCategory } from '../utils/logger';
 import { fetchAgents } from '../services/system';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import toast from 'react-hot-toast';
+import UserPreferences from './UserPreferences';
+import { AxiosError } from 'axios';
 
 // Styled components
 const UploadArea = styled(Paper)(({ theme }) => ({
@@ -92,12 +94,6 @@ interface AnalysisResult {
   dependencies: string[];
 }
 
-interface AnalysisResponse {
-  status: string;
-  analysis: AnalysisResult;
-  outline_file: string;
-}
-
 const MAX_FILE_SIZE = config.upload.maxFileSize;
 
 const formatFileSize = (bytes: number): string => {
@@ -132,7 +128,6 @@ const GenerationPage: React.FC = () => {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
   const [outlineContent, setOutlineContent] = useState<string>("");
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   // Fetch document analyzer context on component mount
   useEffect(() => {
@@ -188,38 +183,80 @@ const GenerationPage: React.FC = () => {
 
   const uploadFile = async (file: File) => {
     try {
+      setIsUploading(true);
       setCurrentFile(file);
       setProcessingResult(null);
       setUploadProgress(0);
       setUploadError(null);
       setUploadSuccess(false);
 
+      console.log('Starting file upload process:', {
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+        fileType: file.type
+      });
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("original_filename", file.name);
 
-      console.log("Uploading file:", file.name);
-
       // Add agent context if available
       if (documentAnalyzerContext) {
         formData.append('agent_context', documentAnalyzerContext);
-        logger.debug(LogCategory.UPLOAD, 'Including agent context in upload', documentAnalyzerContext, 'GenerationPage');
+        console.log('Including agent context in upload:', {
+          contextLength: documentAnalyzerContext.length
+        });
       }
 
-      logger.debug(LogCategory.UPLOAD, `Sending request to ${config.api.baseUrl}${config.api.endpoints.documents.upload}`, null, 'GenerationPage');
+      // Log the FormData contents
+      console.log('FormData file:', file.name);
+      if (documentAnalyzerContext) {
+        console.log('FormData context:', documentAnalyzerContext);
+      }
 
-      const response = await axios.post(`${config.api.baseUrl}${config.api.endpoints.documents.upload}`, formData, {
+      const uploadUrl = `${config.api.baseUrl}${config.api.endpoints.documents.upload}`;
+      console.log('Sending upload request to:', uploadUrl);
+      console.log('Request headers:', {
+        'Content-Type': 'multipart/form-data',
+        'Authorization': localStorage.getItem('adminToken') ? 'Bearer [token]' : 'none'
+      });
+
+      const response = await api.post(uploadUrl, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
         onUploadProgress: (progressEvent) => {
           const progress = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
           setUploadProgress(progress);
-          logger.debug(LogCategory.UPLOAD, `Upload progress: ${Math.round(progress)}%`, null, 'GenerationPage');
+          console.log('Upload progress:', {
+            progress: Math.round(progress),
+            loaded: formatFileSize(progressEvent.loaded),
+            total: formatFileSize(progressEvent.total || 1)
+          });
         },
       });
 
-      logger.debug(LogCategory.UPLOAD, 'File uploaded successfully', response.data, 'GenerationPage');
+      console.log('Received server response:', {
+        status: response.status,
+        hasData: !!response.data,
+        processingInfo: response.data?.data?.processing_info
+      });
+
+      // Check processing status
+      if (response.data?.data?.processing_info?.status === 'error') {
+        const errorMessage = response.data?.data?.processing_info?.error || 'Error processing document';
+        console.error('Server reported processing error:', {
+          error: errorMessage,
+          processingInfo: response.data?.data?.processing_info
+        });
+        throw new Error(errorMessage);
+      }
+
+      console.log('File processed successfully:', {
+        processingInfo: response.data?.data?.processing_info,
+        textLength: response.data?.data?.text?.length
+      });
+
       setProcessingResult({
         ...response.data.data,
         processing_info: {
@@ -232,9 +269,37 @@ const GenerationPage: React.FC = () => {
       // Move to the next step after successful upload
       setCurrentStep(1);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to upload file';
-      logger.error(LogCategory.ERROR, `File upload failed: ${errorMessage}`, error, 'GenerationPage');
+      let errorMessage = 'Failed to upload file';
+      if (error instanceof AxiosError) {
+        console.error('Axios error details:', {
+          response: error.response?.data,
+          status: error.response?.status,
+          message: error.message,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            headers: error.config?.headers,
+            timeout: error.config?.timeout
+          }
+        });
+
+        if (error.response) {
+          errorMessage = `Server error: ${error.response.data?.detail || error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'No response received from server. Please check your connection.';
+        } else {
+          errorMessage = `Request error: ${error.message}`;
+        }
+      } else if (error instanceof Error) {
+        console.error('Error during upload:', {
+          message: error.message,
+          stack: error.stack
+        });
+        errorMessage = error.message;
+      }
+
       setUploadError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -299,7 +364,7 @@ const GenerationPage: React.FC = () => {
         hasContext: !!documentAnalyzerContext
       }, 'GenerationPage');
 
-      const response = await axios.post(
+      const response = await api.post(
         `${config.api.baseUrl}${config.api.endpoints.agents.analyze}`,
         formData,
         {
@@ -338,16 +403,16 @@ const GenerationPage: React.FC = () => {
       logger.error(LogCategory.ERROR, 'Error analyzing document', errorDetails, 'GenerationPage');
 
       let errorMessage = 'Failed to analyze document';
-      if (axios.isAxiosError(error)) {
-        if (error.response) {
-          errorMessage = `Server error: ${error.response.data.detail || error.response.statusText}`;
-        } else if (error.request) {
+      if (error instanceof Error) {
+        const axiosError = error as any;
+        if (axiosError.response) {
+          errorMessage = `Server error: ${axiosError.response.data?.detail || axiosError.response.statusText}`;
+        } else if (axiosError.request) {
           errorMessage = 'No response received from server. Please check your connection.';
         } else {
           errorMessage = `Request error: ${error.message}`;
         }
       }
-
       setAnalysisError(errorMessage);
     } finally {
       setIsAnalyzing(false);
@@ -369,31 +434,79 @@ const GenerationPage: React.FC = () => {
       formData.append("document_type", processingResult.format || "educational");
       formData.append("original_filename", currentFile?.name || "");
 
-      const response = await api.post("/api/v1/agents/analyze", formData);
+      const response = await api.post(config.api.endpoints.agents.analyze, formData);
       setProcessingResult(prev => prev ? {
         ...prev,
         analysis: response.data.analysis
       } : null);
 
       if (response.data.outline_file) {
-        try {
-          const outlineResponse = await api.get(
-            `/api/v1/documents/outline/${encodeURIComponent(response.data.outline_file)}`
-          );
-          setOutlineContent(outlineResponse.data);
-        } catch (error) {
-          console.error("Error fetching outline:", error);
-          toast.error("Failed to fetch outline content");
-        }
+        setOutlineContent(response.data.outline_file);
       }
 
       toast.success("Document analysis completed successfully");
     } catch (error) {
-      console.error("Error deploying agent:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to analyze document';
+      logger.error(LogCategory.ERROR, `Document analysis failed: ${errorMessage}`, error, 'GenerationPage');
+      setAnalysisError(errorMessage);
       toast.error("Failed to analyze document");
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const renderUploadStatus = () => {
+    if (!isUploading && !processingResult) return null;
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        {isUploading && (
+          <Box sx={{ width: '100%', mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Uploading file...
+            </Typography>
+            <LinearProgress variant="determinate" value={uploadProgress} />
+            <Typography variant="body2" color="text.secondary" align="right">
+              {Math.round(uploadProgress)}%
+            </Typography>
+          </Box>
+        )}
+
+        {processingResult?.processing_info && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Processing Status: {processingResult.processing_info.status}
+            </Typography>
+            {processingResult.processing_info.status === 'processing' && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} />
+                <Typography variant="body2" color="text.secondary">
+                  {processingResult.processing_info.status === 'processing' &&
+                   processingResult.processing_info.pages > 0 &&
+                   `Processing page ${processingResult.processing_info.current_page || 1}/${processingResult.processing_info.pages}`}
+                </Typography>
+              </Box>
+            )}
+            {processingResult.processing_info.is_scanned && (
+              <Typography variant="body2" color="text.secondary">
+                Detected scanned document, running OCR...
+              </Typography>
+            )}
+            {processingResult.processing_info.error && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {processingResult.processing_info.error}
+              </Alert>
+            )}
+          </Box>
+        )}
+
+        {uploadError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {uploadError}
+          </Alert>
+        )}
+      </Box>
+    );
   };
 
   return (
@@ -453,38 +566,7 @@ const GenerationPage: React.FC = () => {
               onChange={handleFileUpload}
               accept=".pdf,.docx,.doc,.txt,.html,.htm,.png,.jpg,.jpeg,.tiff"
             />
-            {isUploading ? (
-              <Box sx={{ width: '100%' }}>
-                <CircularProgress />
-                <LinearProgress variant="determinate" value={uploadProgress} sx={{ mt: 2 }} />
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Uploading... {Math.round(uploadProgress)}%
-                </Typography>
-              </Box>
-            ) : uploadSuccess ? (
-              <Alert severity="success">File uploaded successfully!</Alert>
-            ) : (
-              <>
-                <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-                <Typography variant="h6" gutterBottom>
-                  Drag and drop your document here
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  or click to select a file
-                </Typography>
-                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Supported formats: PDF, DOCX, DOC, TXT, HTML, PNG, JPG, TIFF
-                </Typography>
-                <Typography variant="caption" display="block" color="text.secondary">
-                  Maximum file size: {formatFileSize(MAX_FILE_SIZE)}
-                </Typography>
-              </>
-            )}
-            {uploadError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {uploadError}
-              </Alert>
-            )}
+            {renderUploadStatus()}
           </UploadArea>
         </label>
         {uploadSuccess && (
@@ -735,8 +817,12 @@ const GenerationPage: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={currentStep} index={2}>
-        <Typography>User Preferences Step</Typography>
-        {/* TODO: Implement user preferences UI */}
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            User Preferences
+          </Typography>
+          <UserPreferences outlineContent={outlineContent} />
+        </Box>
       </TabPanel>
 
       <TabPanel value={currentStep} index={3}>
