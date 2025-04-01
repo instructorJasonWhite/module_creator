@@ -21,6 +21,7 @@ wheels/
 *.egg
 .env
 venv/
+venv_new/
 ENV/
 
 # Node
@@ -44,3 +45,5 @@ uploads/
 outputs/
 *.log
 .DS_Store
+*.db
+educational_content.db
